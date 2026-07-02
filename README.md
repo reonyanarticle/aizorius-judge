@@ -1,0 +1,2 @@
+# aizorius-judge
+MTGのジャッジをするAIエージェントです。
