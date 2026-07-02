@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AIzorius Judge
+data/chromadb/
+.claude/settings.local.json
+CLAUDE.local.md
