@@ -1,0 +1,7 @@
+- [Verified CR version](cr-version.md) — which CR versions are the source of truth and how to query them
+- [Combat keyword rule numbers](combat-rule-numbers.md) — verified 702.x numbers for combat keywords in CR 2026-06-19 (version-shift traps)
+- [Layers & replacement notes](layers-replacement-notes.md) — 検証済み裁定根拠マップ（613 種類別 / 614-616 置換・軽減）
+- [Basic rules numbering notes](cr-numbering-notes.md) — basic_rules で照合したCR番号・裁定の要点と落とし穴（704.5系・マリガン・土地・召喚酔い）
+- [Keyword rule numbers](keyword-rule-numbers.md) — keywords(702)・処理(701)の検証済み番号対応。Menaceは702.111（呪禁702.11と混同注意）
+- [Commander rule numbers](commander-rules.md) — commander(903系)・共闘(702.124)・統率者ダメージ(903.10a/704.6c)の検証済み根拠と落とし穴
+- [Release notes FAQ sourcing](release-notes-faq.md) — 公式リリースノート由来問題の作り方＋検証済み番号(707.2/712.8a/603.12等)、見送りFAQ
