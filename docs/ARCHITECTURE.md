@@ -70,8 +70,8 @@ sequenceDiagram
 - **Vector検索**（意味的類似・cosine）＋ **BM25**（キーワード一致）の2系統で検索。
 - 融合は **RRF**（Reciprocal Rank Fusion、定数 k=60 が標準）を基本とする。重み付きスコア融合（α）との比較は Phase 1 の検索単体評価（recall@5）で確定する。
 - 上位のみ **Cross-Encoder** で rerank。候補は `ms-marco-MiniLM-L-6-v2` だが**英語 MS MARCO 学習のため日本語クエリで逆効果になりうる**。Phase 1 で rerank 有/無を日本語問で比較し、劣化するなら外すか多言語 reranker に差し替える。
-- Embedding モデル：`paraphrase-multilingual-MiniLM-L12-v2`（384次元・日本語対応）を**暫定候補**とし、Phase 0 のスパイクで対抗候補（multilingual-e5 等）1つ以上と recall@5 で比較して確定する。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。ChromaDB の `SentenceTransformerEmbeddingFunction` に委譲し自動計算。
-- **チャンク粒度は第一級のチューニング変数**：ルール単位か細則（subrule）単位か、日英テキストを1ルールにまとめて埋め込むか別々に持つかは、recall@5 への影響がモデル選定より大きくなりうる。Phase 1 で計測して決める。
+- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。コーパスは**日英併記**（1ルールに英語＋日本語テキストを連結）、E5系の接頭辞（`query: ` / `passage: `）を付与する。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で、日本語クエリ110問に対し recall@5 0.401 / hit@5 0.77 と最良。`paraphrase-multilingual-MiniLM-L12-v2` は recall@5 0.20 で明確に劣後し不採用。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
+- **チャンク粒度は引き続きチューニング変数**：現状はルール（サブルール）単位＋日英併記。細則の分割・結合は Phase 1 で recall@5 を見ながら調整する。
 - **性能目標（目安）**：`search_rules` p95 ≤ 2秒（M4/MPS・rerank込み）。クライアントは1裁定で最大3回呼ぶ前提で、rerank のコストはこの目標に照らして判断する。
 
 ## 5. データソースとパイプライン
@@ -79,9 +79,15 @@ sequenceDiagram
 ### データソース
 | データ | ソース |
 |---|---|
-| 総合ルール（CR） | Wizards公式（英語CR）＋ mtg-jp.com（日本語CR） |
+| 総合ルール（CR） | Wizards公式（英語CR・TXT）＋ mtg-jp.com（日本語CR・HTML） |
 | カード情報・公式裁定 | Scryfall API（認証不要） |
 | リリースノート / CR更新 | Wizards公式 |
+
+### CR原文の取り扱い（利用条件・版固定）
+- **CR本文・パース済みJSONはリポジトリにコミットしない**（`data/raw/`・`data/comprehensive_rules*.json` は gitignore）。Wizards Fan Content Policy は IP の逐語コピー再配布を許可しておらず、公開リポジトリへの同梱は安全側で回避する。取得は `scripts/fetch_rules.sh` でローカルに再現する。
+- ファンコンテンツとしての公開時は Fan Content Policy の条件（無償・非公式の明記等）に従う。**最終判断は人間**（ポリシー原文：https://company.wizards.com/en/legal/fancontentpolicy ）。
+- **版固定**：取得したCRのURL・発効日・SHA-256 を `data/MANIFEST.json`（メタデータのみ・コミット可）に記録する。
+- **英語CRが正文（authoritative）**。dataset の出典検証は英語CRの版に対して行う。日本語CR（和訳）は英語版に遅れて改訂されるため（版ズレが常態）、日本語CRは検索インデックス・日本語表示用と位置づけ、MANIFEST で両者の版を管理する。
 
 ### インデックス構築（初回 / モデル変更時）
 1. CR（PDF/TXT）を `scripts/parse_rules.py` でJSON化（`{number, text, section, category}` の配列）
@@ -126,6 +132,7 @@ aizorius-judge/
 │   ├── server.py                # FastMCP本体 + lifespan（起動時インデックスロード）
 │   ├── settings.py              # 設定（pydantic-settings。APIキー不要）
 │   ├── models.py                # 型定義の集約（Pydantic / dataclass / Enum）
+│   ├── rules_parser.py          # CR原文のパース（scripts/parse_rules.py から利用）
 │   ├── data_loader.py           # CR JSONロード + ChromaDBインデックス + BM25構築
 │   ├── search.py                # HybridSearcher（Vector+BM25+RRF+Rerank）
 │   ├── rules_updater.py         # 差分検出・段階的更新（LLM不使用）
@@ -135,10 +142,12 @@ aizorius-judge/
 │   │   └── get_rulings.py
 │   └── cli/update_rules.py      # 手動更新CLI
 ├── data/
+│   ├── MANIFEST.json            # CR版固定メタデータ（コミット対象）
+│   ├── raw/                     # CR原文（.gitignore）
 │   ├── chromadb/                # 永続化（.gitignore）
-│   └── comprehensive_rules.json # パース済みCR
+│   └── comprehensive_rules_{en,ja}.json # パース済みCR（.gitignore）
 ├── evaluation/                  # 評価（→ EVALUATION.md）
-│   ├── dataset.json
+│   ├── dataset.jsonl
 │   ├── test_runner.md
 │   └── reports/
 ├── tests/

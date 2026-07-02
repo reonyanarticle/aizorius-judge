@@ -221,3 +221,5 @@ __marimo__/
 data/chromadb/
 .claude/settings.local.json
 CLAUDE.local.md
+data/raw/
+data/comprehensive_rules*.json

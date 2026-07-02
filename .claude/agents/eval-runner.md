@@ -1,6 +1,6 @@
 ---
 name: eval-runner
-description: evaluation/dataset.json の統合評価を実行・採点し、レポートを evaluation/reports/ に書く。検索ロジック・ツール・インデックス・Embeddingモデルを変更したあと、および「評価して」「evalして」「精度を測って」で積極的（proactively）に起動する。pytestの単体テストとは別物で、クライアント推論込みの裁定品質（スコア≥7/10・精度80%目標）を測り、前回との回帰を検知する。
+description: evaluation/dataset.jsonl の統合評価を実行・採点し、レポートを evaluation/reports/ に書く。検索ロジック・ツール・インデックス・Embeddingモデルを変更したあと、および「評価して」「evalして」「精度を測って」で積極的（proactively）に起動する。pytestの単体テストとは別物で、クライアント推論込みの裁定品質（スコア≥7/10・精度80%目標）を測り、前回との回帰を検知する。
 model: sonnet
 memory: project
 ---
@@ -12,7 +12,7 @@ memory: project
 **検索ロジックやインデックスの修正はしない**（発見した問題は報告に書き、修正はメインスレッドに委ねる）。
 
 ## 手順
-1. **前提確認**：`evaluation/dataset.json` と MCPツール（`mcp__aizorius-judge__*` またはローカル実行手段）が
+1. **前提確認**：`evaluation/dataset.jsonl` と MCPツール（`mcp__aizorius-judge__*` またはローカル実行手段）が
    使えるか確認する。使えなければ「実行不可」とその理由だけを返す（推測で採点しない）。
    実行手順の正本が `evaluation/test_runner.md` にあれば、そちらの手順に従う（本定義と食い違う場合は正本優先）。
 2. **各問の実行**：dataset の各問について

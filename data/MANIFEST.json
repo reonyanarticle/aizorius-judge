@@ -1,0 +1,22 @@
+{
+  "description": "CR原文の版固定マニフェスト。本文はライセンス上の理由でコミットしない（data/raw/ はgitignore）。取得は scripts/fetch_rules.sh で再現する。",
+  "sources": {
+    "cr_en": {
+      "url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.txt",
+      "effective_date": "2026-06-19",
+      "local_file": "data/raw/MagicCompRules_20260619_en.txt",
+      "sha256": "e99cd70eb64ca854acb6420ebbf06e369e3f258e0cfba4f03f70bd881386f79b",
+      "retrieved_at": "2026-07-02",
+      "note": "英語が正文（authoritative）。出典検証はこの版に対して行う。"
+    },
+    "cr_ja": {
+      "url": "https://mtg-jp.com/gameplay/rules/docs/0006836/",
+      "version": "20260417.2",
+      "effective_date": "2026-04-17",
+      "local_file": "data/raw/MagicCompRules_20260417.2_ja.html",
+      "sha256": "43525816d62dcf4d47de2aa82a34b5e6dabcb75979115aabfec301f774200416",
+      "retrieved_at": "2026-07-02",
+      "note": "日本マジックジャッジルール文書翻訳チームによる和訳。英語版(2026-06-19)より2か月古い版ズレあり。"
+    }
+  }
+}

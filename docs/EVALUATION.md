@@ -8,7 +8,7 @@
 |----|------|------|--------------|
 | 1. 検索単体評価 | Hybrid Search の検索品質（MCP非依存） | dataset の `retrieval_relevant_rules` を正解として **recall@5 / MRR** を pytest で測定（`tests/test_search.py`） | 毎コミット / $0 |
 | 2. ツール単体テスト | MCPツールのI/O・整形・エラー処理 | pytest（`tests/test_mcp_tools.py`、Scryfallはモック） | 毎コミット / $0 |
-| 3. 統合評価 | クライアントの推論・裁定品質 | Claude Code＋eval-runner サブエージェントで `evaluation/dataset.json` を実行（`evaluation/test_runner.md` の手順） | 開発時・週次 / $0 |
+| 3. 統合評価 | クライアントの推論・裁定品質 | Claude Code＋eval-runner サブエージェントで `evaluation/dataset.jsonl` を実行（`evaluation/test_runner.md` の手順） | 開発時・週次 / $0 |
 | 4. 外部評価 | 総合精度のダブルチェック | GPT-4o LLM-as-a-Judge（`scripts/run_external_eval.py`） | リリース前・任意 / ~$5 |
 
 - 評価の中心は **Claude Code**（開発環境に統合、追加コストなし）。外部LLM評価はオプション。
@@ -22,11 +22,13 @@
 | 統合評価 | 各問スコア ≥7/10 で合格、全体精度 80% 以上を目標 |
 
 - **層間ゲート**：検索単体（第1層）が基準未達のうちは、統合評価（第3層）のスコア改善に投資しない（検索が正解を返せない状態で推論側を調整しても徒労になる）。
+- **LLM-judge の較正**：統合評価（第3層）の初回実行時に15〜20問を人間も採点し、eval-runner の採点との一致率（±1点以内の割合）を確認して採点プロンプトを較正する。LLM採点を人間採点で統計的に裏付ける構成は RAG 評価の先行研究（ARES の PPI 等）に倣う。
 - **代理指標の相関確認**：recall@5 を上げても裁定品質（7/10）が動かない事態を早期に検知するため、Phase 1 の時点で MCP を介さずライブラリ直呼びで数問だけ end-to-end 採点し、両指標の相関を確認する（→ [PLAN.md](PLAN.md) Phase 1）。
 - 回帰：前回レポートより下がった問題は最優先で報告・対処する（eval-runner が検知）。
 
-## 3. 評価データセット（`evaluation/dataset.json`）
-Phase 0 で15問を作成し、Phase 3 で52問へ拡充する。各問のスキーマ：
+## 3. 評価データセット（`evaluation/dataset.jsonl`）
+Phase 0 で110問（起案100＋公式リリースノートFAQ由来10）を作成し、Phase 3 で必要に応じて拡充する。
+**形式は JSONL（1問=1行）の単一ファイル**。評価データセットの事実上の標準（OpenAI evals / Hugging Face datasets）に合わせる。1行=1問なので git diff が問単位になり、追記・行単位ツール（jq等）とも相性がよい。カテゴリはファイル分割でなく各問の `category` フィールドで表す。各問のスキーマ：
 
 | フィールド | 内容 |
 |---|---|
@@ -47,9 +49,16 @@ Phase 0 で15問を作成し、Phase 3 で52問へ拡充する。各問のスキ
 - **正解データの作り方が評価を汚染しないよう注意**：`retrieval_relevant_rules` を特定の検索手段（キーワードgrepだけ等）で集めると、その方式に有利な正解になる。CRの目次・関連ルール参照（"See rule …"）もたどって網羅する。網羅に自信がない問は `notes` に残す。
 - 期待値の誤りを見つけたら、採点側で辻褄を合わせず dataset を修正する（修正は出典つきで・人間承認を経る）。
 
-### カテゴリ
-- `basic_rules` / `stack_priority` / `commander`（将来: `layers`, `replacement_effects` 等）
-- **Commander（統率者戦）を厚めに**：統率者税、統率者ダメージ、色アイデンティティ等（→ [ARCHITECTURE.md](ARCHITECTURE.md) §6）。
+### カテゴリ（110問の配分）
+| カテゴリ | 問数 | 範囲の目安 |
+|---|---|---|
+| `basic_rules` | 22 | ターン構造・唱える手順・対象・状況起因処理の基本 |
+| `stack_priority` | 19 | スタック・優先権・解決順・呪文/能力への対応 |
+| `combat` | 17 | 攻撃/ブロック指定・戦闘ダメージ・飛行/到達等の回避能力 |
+| `keywords` | 16 | キーワード能力（702）・キーワード処理 |
+| `commander` | 25 | **厚めに**：統率者税・統率者ダメージ・色アイデンティティ・統率領域（→ [ARCHITECTURE.md](ARCHITECTURE.md) §6） |
+| `layers` | 6 | 種類別（613）・タイムスタンプ・依存 |
+| `replacement_effects` | 5 | 置換・軽減効果（614/615）・適用順 |
 
 ## 4. 実行手順
 - 検索単体：`uv run pytest tests/test_search.py`（recall@5 / MRR を assert）。
