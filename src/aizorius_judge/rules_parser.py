@@ -15,13 +15,23 @@ import re
 from collections.abc import Sequence
 from html.parser import HTMLParser
 
-from aizorius_judge.models import RuleEntry
+from aizorius_judge.models import GlossaryEntry, RuleEntry
 
-__all__ = ["extract_lines_from_html", "parse_rules_lines"]
+__all__ = [
+    "extract_lines_from_html",
+    "merge_glossaries",
+    "parse_glossary_en",
+    "parse_glossary_ja",
+    "parse_rules_lines",
+]
 
 _SECTION_RE = re.compile(r"^(\d{3})\.\s+(.+)$")
 _RULE_RE = re.compile(r"^(\d{3})\.(\d+[a-z]?)\.?\s+(.+)$")
 _GLOSSARY_TITLES = ("Glossary", "用語集")
+_RULE_REF_RE = re.compile(r"rule (\d{3}\.\d+[a-z]?)")
+_JA_GLOSS_H5_RE = re.compile(r"<h5><a id=\"g_[^\"]*\">(.*?)</a></h5>", re.DOTALL)
+_TAG_RE = re.compile(r"<[^>]+>")
+_READING_RE = re.compile(r"（[ぁ-ゖー・、\s]+）")
 
 
 def parse_rules_lines(lines: Sequence[str]) -> list[RuleEntry]:
@@ -119,3 +129,109 @@ def extract_lines_from_html(html: str) -> list[str]:
     extractor.feed(html)
     extractor.close()
     return extractor.lines
+
+
+def _referenced_rules(text: str) -> list[str]:
+    """定義文中の "rule NNN.N[x]" 参照を抽出する（セクションのみの参照は含めない）。"""
+    seen: dict[str, None] = {}
+    for number in _RULE_REF_RE.findall(text):
+        seen.setdefault(number, None)
+    return list(seen)
+
+
+def parse_glossary_en(raw_text: str) -> list[GlossaryEntry]:
+    """英語CR（TXT）の用語集をパースする。
+
+    用語集の構造: 本文側（2度目）の "Glossary" 行から "Credits" 行まで、
+    空行区切りのブロックが並び、各ブロックは「用語行＋定義行（複数可）」。
+    """
+    lines = raw_text.splitlines()
+    glossary_positions = [
+        i for i, line in enumerate(lines) if line.strip() == "Glossary"
+    ]
+    credits_positions = [i for i, line in enumerate(lines) if line.strip() == "Credits"]
+    if len(glossary_positions) < 2 or len(credits_positions) < 2:
+        return []
+    region = lines[glossary_positions[1] + 1 : credits_positions[1]]
+
+    entries: list[GlossaryEntry] = []
+    block: list[str] = []
+    for raw_line in [*region, ""]:
+        line = raw_line.strip()
+        if line:
+            block.append(line)
+            continue
+        if len(block) >= 2:
+            definition = " ".join(block[1:])
+            entries.append(
+                GlossaryEntry(
+                    term_en=block[0],
+                    definition_en=definition,
+                    rules=_referenced_rules(definition),
+                )
+            )
+        block = []
+    return entries
+
+
+def parse_glossary_ja(html: str) -> list[GlossaryEntry]:
+    """日本語CR（HTML）の用語集をパースする。
+
+    構造: `<h5><a id="g_...">威迫（いはく）／Menace</a></h5>` の見出しに続いて
+    定義テキスト（インラインリンク含む）が次の h5 まで続く。
+    用語は「日本語（読み）／English」形式で、English 部分が日英マージのキーになる。
+    """
+    matches = list(_JA_GLOSS_H5_RE.finditer(html))
+    entries: list[GlossaryEntry] = []
+    for index, match in enumerate(matches):
+        term_raw = _TAG_RE.sub("", match.group(1)).strip()
+        body_end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else match.end() + 4000
+        )
+        body_html = html[match.end() : body_end]
+        # 用語集セクションの終端（divの閉じ等）で切る
+        for terminator in ("</div>", "<h4>"):
+            cut = body_html.find(terminator)
+            if cut != -1:
+                body_html = body_html[:cut]
+        definition = " ".join(_TAG_RE.sub(" ", body_html).split())
+        if "／" in term_raw:
+            term_ja, _, term_en = term_raw.rpartition("／")
+        else:
+            term_ja, term_en = term_raw, term_raw
+        term_ja = _READING_RE.sub("", term_ja).strip()
+        entries.append(
+            GlossaryEntry(
+                term_en=term_en.strip(),
+                term_ja=term_ja or None,
+                definition_ja=definition or None,
+                rules=_referenced_rules(definition),
+            )
+        )
+    return entries
+
+
+def merge_glossaries(
+    en_entries: list[GlossaryEntry], ja_entries: list[GlossaryEntry]
+) -> list[GlossaryEntry]:
+    """英語用語集を正とし、日本語用語集を英語用語キーで突き合わせて統合する。
+
+    日本語側にしかない項目もそのまま残す（日本語クエリの用語照合に使うため）。
+    """
+    merged: dict[str, GlossaryEntry] = {}
+    for entry in en_entries:
+        merged[entry.term_en.lower()] = entry.model_copy()
+    for ja_entry in ja_entries:
+        key = ja_entry.term_en.lower()
+        if key in merged:
+            base = merged[key]
+            base.term_ja = ja_entry.term_ja
+            base.definition_ja = ja_entry.definition_ja
+            for number in ja_entry.rules:
+                if number not in base.rules:
+                    base.rules.append(number)
+        else:
+            merged[key] = ja_entry.model_copy()
+    return list(merged.values())

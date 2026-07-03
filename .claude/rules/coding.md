@@ -1,6 +1,6 @@
 # コーディング規約（AIzorius Judge 固有）
 
-AIzorius Judge の実装に従うルール。コードは未着手だが、Phase 1 着手時からこれを守る。言語・ツールの細則は [[python]]。
+AIzorius Judge の実装に従うルール。実装はこれを守る。言語・ツールの細則は [[python]]。
 
 ## 言語・ツール
 - **Python 3.12**。依存管理は **uv**。**lint＝Ruff／整形＝Black／型＝basedpyright**。詳細は [[python]]。

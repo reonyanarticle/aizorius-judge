@@ -1,9 +1,9 @@
-# Embedding bake-off（Phase 0 スパイク）
+# Embedding bake-off（初期スパイク）
 
 - クエリ: golden dataset 110問（日本語）
 - コーパス: 英語CR全ルール（en）／英語＋日本語連結（en+ja）、3153件
 - 指標: recall@5（retrieval_relevant_rules に対する再現率）・hit@5（1件以上ヒット）
-- Vector検索のみの比較。BM25・RRF・rerank は Phase 1 で評価する。
+- Vector検索のみの比較。BM25・RRF・rerank は本実装の検索単体評価で扱う。
 
 | モデル | コーパス | recall@5 | hit@5 | index時間 |
 |---|---|---|---|---|

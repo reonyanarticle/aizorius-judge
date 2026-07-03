@@ -20,12 +20,15 @@ allowed-tools: Bash(ls:*), Bash(find:*), Bash(grep:*), Read, Glob, Grep
      ヒット行は目視で図かどうか判別する。
    - **矢印（→ ↔ 等）と `|` は検査対象にしない**：矢印は本文の参照表記で正当に使われ、`|` は markdown
      テーブルで必ずヒットするため、含めると誤検知過多で検査が形骸化する。
-   - 例外：`README.md`（ルート）のアーキテクチャ要点のコードブロック図は既知の許容（1分説明のための簡易図）。
+   - 例外：`README.md`（ルート）のアーキテクチャ要点のコードブロック図、および `ARCHITECTURE.md` §8 の
+     ディレクトリ構造ツリー（罫線を使うが「図」ではなくファイル一覧の慣習的表記）は既知の許容。
 3. **内部リンクの実在**：doc 内の相対リンク（`[..](FILE.md)` / `[..](docs/FILE.md)`）先が実在するか。
    リンクを抽出し、リンク元ファイルのディレクトリ基準で対象ファイルの有無を確認する（リンク切れは FAIL）。
    `.claude/rules/documentation.md` 内の**リンク記法の例示**は対象外。
 4. **正本の一意性（軽チェック）**：docs 間で同じ決定が二重記載されていないか、目視で疑わしい箇所を挙げる
    （重複しそうなら片方を正本にし、もう片方はリンクのみにする規約）。
+5. **フェーズ番号の閉じ込め**：フェーズ番号（Phase 0/1/1.5…）が `docs/PLAN.md` 以外に無いこと。
+   - `grep -rnE "Phase [0-9]" README.md CLAUDE.md docs/ .claude/rules .claude/skills .claude/agents src/ scripts/ tests/ evaluation/ | grep -v docs/PLAN.md` が0件（ファイル名も対象。MTG用語の "Combat Phase" 等の英語カテゴリ名は除外してよい）。
 
 ## 出力
 各項目を PASS / FAIL（＋該当ファイル・行）で表にまとめ、FAIL には最小の修正案を1行添える。

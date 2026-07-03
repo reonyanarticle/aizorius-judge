@@ -1,8 +1,8 @@
-"""Embeddingモデルの bake-off スパイク（Phase 0）。
+"""Embeddingモデルの bake-off スパイク（初期の方式選定）。
 
 候補モデル × インデックス言語戦略ごとに、golden dataset の日本語クエリで
-recall@5 / hit@5 を測り、Phase 1 で使うモデルと言語戦略を決める材料を出す。
-Vector検索のみの粗い比較であり、BM25・RRF・rerank は Phase 1 で評価する。
+recall@5 / hit@5 を測り、コア検索で使うモデルと言語戦略を決める材料を出す。
+Vector検索のみの粗い比較であり、BM25・RRF・rerank は本実装の検索単体評価で扱う。
 
 実行: uv run python scripts/spike_embedding.py
 出力: 標準出力の表 + evaluation/reports/spike-embedding.md
@@ -118,12 +118,12 @@ def main() -> int:
 
     report = "\n".join(
         [
-            "# Embedding bake-off（Phase 0 スパイク）",
+            "# Embedding bake-off（初期スパイク）",
             "",
             f"- クエリ: golden dataset {len(queries)}問（日本語）",
             f"- コーパス: 英語CR全ルール（en）／英語＋日本語連結（en+ja）、{len(corpora['en'][0])}件",
             "- 指標: recall@5（retrieval_relevant_rules に対する再現率）・hit@5（1件以上ヒット）",
-            "- Vector検索のみの比較。BM25・RRF・rerank は Phase 1 で評価する。",
+            "- Vector検索のみの比較。BM25・RRF・rerank は本実装の検索単体評価で扱う。",
             "",
             "| モデル | コーパス | recall@5 | hit@5 | index時間 |",
             "|---|---|---|---|---|",

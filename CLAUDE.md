@@ -22,7 +22,7 @@
 ## アーキテクチャ要点
 - **MCPは「情報検索の道具箱」に徹し、考えるのはクライアント側のLLM**（Claude Desktop / Claude Code）。すべてローカル・無料で完結。
 - FastMCP（stdio）＋ ChromaDB（永続化・cosine）＋ ローカルEmbedding（`intfloat/multilingual-e5-base`・日英併記コーパス）。
-- 検索は Hybrid：Vector＋BM25 → RRF融合 → Cross-Encoder rerank。
+- 検索は Hybrid：Vector（言語別）＋BM25＋用語集照合 → RRF融合 → 多言語rerank → **親ルール単位のグループで返却**。
 - カード情報・公式裁定は Scryfall API（認証不要・日英fuzzy対応）。
 - 詳細：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -34,7 +34,7 @@
 - サブエージェント：`dataset-curator`（opus・memory付き）＝golden datasetの作成・拡充と出典検証。`eval-runner`（sonnet・memory付き）＝統合評価の実行と回帰検知。`critical-reviewer`（opus）＝設計・計画・前提の批判的点検。コード差分の検証はユーザーレベルの `tech-lead-reviewer`。
 - skill：`/qa`（Ruff→Black→basedpyright→pytest を通るまで）、`/mcp-smoke`（3ツールの実挙動をPASS/FAIL）、`/eval`（eval-runnerへ委譲）、`/commit`（混入チェック込みの日本語コミット）、`/docs-check`（docs規約リンター）。
 - hook：`py-format.sh`（編集した`.py`をBlack+Ruff自動整形）／`stop-gate.sh`（未コミットの`.py`変更があるターン終了時に品質ゲートを回し、失敗ならblockして自己修正させる。2周目は素通し）。
-- 実装の区切りでは `/qa` → `/mcp-smoke` →（検索に触れたら）`/eval` の順で自己検証してから完了報告する。
+- 実装の区切りでは `/qa` → `/mcp-smoke` →（検索に触れたら）`/eval` →（docs/rulesに触れたら）`/docs-check` の順で自己検証してから完了報告する。
 
 ## 実装フェーズ（eval-first）
-- Phase 0: データ基盤＋ゴールデンデータセット → Phase 1: コア検索エンジン（MCP非依存・recall測定しながら） → Phase 2: MCP層＋Scryfall → Phase 3: 統合評価＋拡充 → Phase 4: 自動更新。詳細：[docs/PLAN.md](docs/PLAN.md)。
+- データ基盤＋dataset → コア検索エンジン → **生成層（裁定）の評価** → MCP層＋Scryfall → 統合評価＋拡充 → 自動更新、の順。**フェーズ番号と正本は [docs/PLAN.md](docs/PLAN.md) のみ**（他所にフェーズ番号を書かない → [.claude/rules/documentation.md](.claude/rules/documentation.md)）。

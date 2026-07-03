@@ -6,7 +6,7 @@
 - [ARCHITECTURE.md](ARCHITECTURE.md) … 確定した設計判断・構成（コンテナ図）・実行フロー（シーケンス図）・MCPツール契約・検索/データパイプライン・品質/安全設計・ディレクトリ構造
 
 ## 計画
-- [PLAN.md](PLAN.md) … 開発フェーズ（Phase 0〜4・eval-first）・Phase 0 着手内容・環境前提
+- [PLAN.md](PLAN.md) … 開発フェーズ（eval-first）・着手内容・環境前提
 
 ## 評価
 - [EVALUATION.md](EVALUATION.md) … 4層評価（検索単体/ツール単体/統合/外部）・層間ゲート・データセット仕様・合格基準

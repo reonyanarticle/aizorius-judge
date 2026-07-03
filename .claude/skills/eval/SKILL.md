@@ -11,7 +11,7 @@ allowed-tools: Agent, Read, Grep, Glob
 （pytest）とは**別物**で、クライアント推論込みの裁定品質を測る。
 
 ## 手順
-1. `evaluation/dataset.jsonl` の存在を確認する。無ければ「Phase 4 未着手のため実行不可」と報告して終了。
+1. `evaluation/dataset.jsonl` の存在を確認する。無ければ「dataset 未作成のため実行不可」と報告して終了。
 2. **eval-runner サブエージェント**を起動し、評価の実行・採点・レポート作成を委譲する
    （手順の正本は `evaluation/test_runner.md` と eval-runner の定義）。
 3. 完了後、次を要約して報告する：

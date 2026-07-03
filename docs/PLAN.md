@@ -1,15 +1,17 @@
 # Plan（開発フェーズと環境前提）
 
-実装順の正本。**評価駆動（eval-first）**：ゴールデンデータセットと測定手段を先に作り、コア検索を測りながら作り込み、最後にMCPの皮を被せる。各フェーズの技術詳細は [ARCHITECTURE.md](ARCHITECTURE.md)、評価は [EVALUATION.md](EVALUATION.md)。
+実装順の正本。**評価駆動（eval-first）**：ゴールデンデータセットと測定手段を先に作り、コア検索を測りながら作り込み、**回答（裁定）の品質を確立してから**MCPの皮を被せる。各フェーズの技術詳細は [ARCHITECTURE.md](ARCHITECTURE.md)、評価は [EVALUATION.md](EVALUATION.md)。
+**フェーズ番号の記載は本ファイルのみ**（他の doc・rules・コード・レポートはフェーズ番号を書かず、本ファイルへのリンクで参照する → [.claude/rules/documentation.md](../.claude/rules/documentation.md)）。
 
 ## 開発フェーズ（実装順）
 
 | Phase | 内容 | 完了条件 |
 |---|---|---|
 | **0. データ基盤＋ゴールデンデータセット** | CR原文の入手・**利用条件の一次確認**・版固定（発効日＋ハッシュ）、`parse_rules.py`（CR→JSON）、評価データセット110問（起案100＋公式リリースノートFAQ由来10）の作成・**出典検証・人間承認**、Embeddingモデルのスパイク検証（bake-off） | dataset 110問が出典検証済み＋人間承認済み／CR JSONが生成できる／Embedding方針が確定 |
-| **1. コア検索エンジン（MCP非依存）** | `data_loader.py`（ChromaDB＋BM25）、`search.py`（Hybrid＋融合＋rerank）、`models.py`/`settings.py`。datasetの `retrieval_relevant_rules` を正解として**recall@5 を測りながら**、融合方式（RRF k=60 vs 重み付き）・rerank有無（日本語で必ず比較）・**チャンク粒度**をチューニング。あわせて**ライブラリ直呼びで数問 end-to-end 採点**し、recall@5 と裁定品質の相関を確認 | 日英クエリで recall@5 ≥ 0.8（目安）／代理指標の相関確認済み（[EVALUATION.md](EVALUATION.md)） |
+| **1. コア検索エンジン（MCP非依存）** | `data_loader.py`（ChromaDB＋BM25）、`search.py`（Hybrid＋融合＋rerank）、`models.py`/`settings.py`。datasetを正解として**検索単体評価を測りながら**、融合方式・rerank・言語戦略をチューニング。あわせて**ライブラリ直呼びで数問 end-to-end 採点**し、検索指標と裁定品質の相関を確認 | **must_cite recall@5 ≥ 0.8**（[EVALUATION.md](EVALUATION.md) の基準）／代理指標の相関確認済み |
+| **1.5. 生成層（裁定）の評価** | MCP化の前に**回答そのものの品質**を確立する。ライブラリ直呼びで全110問の裁定を生成し、`evaluation/test_runner.md` の手順で採点（eval-runner）。**裁定文込みのレポート**を `evaluation/reports/` に保存（人間が回答を確認できる形）。LLM-judge較正（15〜20問の人間採点との一致率）もここで実施 | 各問スコア≥7/10・全体精度80%以上（[EVALUATION.md](EVALUATION.md) 第3層の基準を前倒しで満たす）／較正済み |
 | **2. MCP層＋Scryfall** | FastMCPサーバー＋3ツール＋lifespan、Scryfall asyncクライアント（レート制限・**利用規約の一次確認**）、Scryfall の**contract test**（記録済みfixture＋任意のlive実行マーク）、`.mcp.json` 登録、Claude Desktop接続 | `/mcp-smoke` 全PASS |
-| **3. 統合評価＋拡充** | `test_runner.md`、eval-runner による採点・回帰検知の運用開始、datasetの拡充（必要に応じて。手薄なカテゴリの追補）、外部評価（任意） | 各問スコア≥7/10・全体精度80%以上 |
+| **3. 統合評価＋拡充** | MCP経由での統合評価（1.5 のライブラリ直呼び結果と比較し、MCP層で品質が落ちていないことを確認）、回帰検知の運用開始、datasetの拡充（必要に応じて。手薄なカテゴリの追補）、外部評価（任意） | 各問スコア≥7/10・全体精度80%以上（MCP経由） |
 | **4. 自動更新** | `rules_updater.py`（差分検出・段階更新、LLM不使用）、`check_updates.sh`（cron） | CR更新時に変更分のみ再インデックスされ、検索評価が劣化しない |
 
 - 自動更新を最後に置く理由：CRの改訂はセット発売ごと（数か月周期）で、後回しの実害が小さい。逆に dataset を先頭に置く理由：検索・裁定の**品質はすべて dataset を物差しに測る**ため、物差しが無いままの実装・チューニングは手戻りになる。

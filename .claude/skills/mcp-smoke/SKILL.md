@@ -11,7 +11,7 @@ allowed-tools: Bash(uv run:*), Bash(npx:*), Read, Grep
 **MCPプロトコル越しの実挙動**を見る。
 
 ## 前提
-- Phase 1 完了後に有効。`src/aizorius_judge/server.py` が無ければ「未実装のためスキップ」と報告して終了。
+- MCPサーバー実装後に有効。`src/aizorius_judge/server.py` が無ければ「未実装のためスキップ」と報告して終了。
 - 本セッションに dev サーバーが接続済み（`.mcp.json` に登録済みで `mcp__aizorius-judge__*` ツールが見える）なら
   それを直接呼ぶ。未接続なら `uv run python` で in-process クライアント（fastmcp の Client）から呼ぶ。
 
