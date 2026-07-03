@@ -59,7 +59,7 @@ sequenceDiagram
 
 | ツール | 引数 | 返り値 | 備考 |
 |--------|------|--------|------|
-| `search_rules` | `query: str`, `max_results: int = 5`, `section: str?` | 整形済みルールtext | ルール番号直接指定も可（例 `"702.9b"`）。`section` で絞り込み |
+| `search_rules` | `query: str`, `max_results: int = 5`, `section: str?` | 整形済みルールtext（**親ルール単位のグループ**。`max_results` はグループ数） | ルール番号直接指定も可（例 `"702.9b"`）。`section` で絞り込み |
 | `lookup_card` | `card_name: str` | カード情報text | Scryfall fuzzy検索（`/cards/named`）。日英対応 |
 | `get_card_rulings` | `card_name: str` | 公式裁定リストtext | Scryfall `rulings_uri` から取得 |
 
@@ -67,19 +67,24 @@ sequenceDiagram
 - Scryfall はレート制限を守る：リクエスト間に 50–100ms sleep、User-Agent 付与、`httpx` で async 呼び出し。
 
 ## 4. 検索パイプライン（Hybrid Search・Phase 1 で計測確定）
-- **Vector検索**（cosine）＋ **BM25**（キーワード一致）→ **RRF融合（k=60）** → **多言語 Cross-Encoder rerank**（上位50件）。
-- **Vectorは言語別インデックス（決定）**：1ルールにつき英語・日本語で別々のベクトルを持ち（`number#en` / `number#ja`）、検索時にルール番号で重複排除する。日英併記1本より recall@5 が+0.02、日本語単体と同等で英語クエリにも強い。
+`Vector（言語別）＋ BM25 ＋ 用語集照合 → RRF融合（k=60）→ 多言語rerank → 親ルールでグループ化して返却`
+
+- **Vectorは言語別インデックス（決定）**：1ルールにつき英語・日本語で別々のベクトルを持ち（`number#en` / `number#ja`）、検索時にルール番号で重複排除する。
 - **BM25 は日英併記テキスト**に対して、形態素解析器なしのトークナイザ（英数字は単語・ルール番号は1トークン・日本語は文字バイグラム）で構築。
-- **Reranker：`BAAI/bge-reranker-v2-m3`（多言語・決定）**。設計原案候補の `ms-marco-MiniLM-L-6-v2`（英語学習）は多言語要件に合わず不採用。軽量多言語（mmarco-mMiniLMv2）も品質劣化が大きく不採用。`RERANKER_MODEL` を空にすると rerank なしの高速構成になる。
-- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。E5系の接頭辞（`query: ` / `passage: `）を付与。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で `paraphrase-multilingual-MiniLM-L12-v2`（recall@5 0.20）に対し明確に優位。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
+- **第3系統＝用語集照合（決定）**：CR用語集（約800語・日英対応）をパースし、クエリ中のMTG用語（「威迫」「統率者税」等）を定義ルール番号へ決定論的に対応付ける（`data/glossary.json`。LLM不使用）。キーワード的なクエリに対する精度の柱。
+- **返却単位＝親ルールのグループ（決定）**：ヒットしたサブルール単体でなく、親ルール＋全サブルール（例: 702.11 呪禁の a〜d）を1グループとして返す。正解ルールは兄弟クラスタで現れることが多く（エラー分析）、ジャッジの実務とも一致する。`max_results`＝グループ数。
+- **Reranker：`BAAI/bge-reranker-v2-m3`（多言語・決定）**。設計原案候補の `ms-marco-MiniLM-L-6-v2`（英語学習）は多言語要件に合わず不採用。`RERANKER_MODEL` を空にすると rerank なしの高速構成になる。
+- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。E5系の接頭辞（`query: ` / `passage: `）を付与。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で明確に優位。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
 - **実測性能と構成の使い分け**（M4/MPS・110問・[../evaluation/reports/retrieval-tuning.md](../evaluation/reports/retrieval-tuning.md)）：
 
-  | 構成 | recall@5 | must_cite recall@5 | MRR | p50 / p95 |
+  | 構成 | recall@5 | must_cite recall@5 | MRR | p50 |
   |---|---|---|---|---|
-  | 既定（rerank あり） | 0.519 | **0.805** | 0.753 | 4.6s / 9.1s |
-  | 高速（rerank なし） | 0.429 | 0.636 | 0.607 | 29ms / 50ms |
+  | 既定（rerank あり）・単一クエリ | 0.681 | 0.850 | 0.783 | 5.1s |
+  | 既定・反復検索（2クエリ模擬） | 0.740 | **0.914** | 0.783 | 6.4s |
+  | 高速（rerank なし）・単一クエリ | 0.640 | 0.791 | 0.723 | 0.1s |
+  | 高速・反復検索（2クエリ模擬） | 0.688 | 0.859 | 0.723 | 0.16s |
 
-  品質とレイテンシは強いトレードオフ（poolや入力長を削るとどの案も品質が大きく崩れる）で、裁定支援ではLLMクライアントのツール呼び出しに数秒が許容されるため**品質優先を既定**とする。レイテンシ短縮（ONNX化・蒸留reranker等）は Phase 2 以降の課題。
+  既定は品質優先（rerankあり）。高速構成は rerank なしでも旧設計の品質構成を上回っており、レイテンシ重視の環境では十分実用になる。反復検索（クライアントの追加クエリ）が must_cite をさらに引き上げるため、ツール説明でクライアントに反復検索を促す（§6）。
 
 ## 5. データソースとパイプライン
 
@@ -108,7 +113,7 @@ sequenceDiagram
 
 ## 6. 品質・安全設計
 - **Hallucination対策**：クライアントが引用CR番号を `search_rules` で再検証。存在しなければ警告を付与する。
-- **反復検索**：情報不足なら追加で `search_rules` を呼ぶ（回数はクライアント判断、目安3回まで）。
+- **反復検索**：情報不足なら角度を変えたクエリで追加の `search_rules` を呼ぶ。回数の上限は設けず、**十分性基準**で止める（結論と引用ルールが検索結果で裏付けられた時点で終了）。単発クエリの検索は正解ルールの一部を取り逃すことがあり（検索単体評価の実測）、反復検索がその回収経路になる。サーバーは回数を制限しない。
 - **Commander優先**：統率者戦ルール（税、統率者ダメージ、色アイデンティティ等）を評価データに厚めに含める（→ [EVALUATION.md](EVALUATION.md)）。
 - **日本語対応**：多言語Embedding＋Scryfallの日本語カード名fuzzy。
 

@@ -13,7 +13,13 @@ import sys
 from pathlib import Path
 
 from aizorius_judge.models import RulesDocument
-from aizorius_judge.rules_parser import extract_lines_from_html, parse_rules_lines
+from aizorius_judge.rules_parser import (
+    extract_lines_from_html,
+    merge_glossaries,
+    parse_glossary_en,
+    parse_glossary_ja,
+    parse_rules_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +87,31 @@ def main() -> int:
             out_path.relative_to(REPO_ROOT),
             document.effective_date,
         )
+
+    # 用語集（日英マージ）: 用語→ルール番号の決定論的対応表として検索の第3系統に使う
+    en_raw = (REPO_ROOT / manifest["sources"]["cr_en"]["local_file"]).read_text(
+        encoding="utf-8-sig"
+    )
+    ja_raw = (REPO_ROOT / manifest["sources"]["cr_ja"]["local_file"]).read_text(
+        encoding="utf-8-sig"
+    )
+    glossary = merge_glossaries(parse_glossary_en(en_raw), parse_glossary_ja(ja_raw))
+    glossary_path = REPO_ROOT / "data" / "glossary.json"
+    glossary_path.write_text(
+        json.dumps(
+            [entry.model_dump() for entry in glossary], ensure_ascii=False, indent=1
+        ),
+        encoding="utf-8",
+    )
+    with_ja = sum(1 for entry in glossary if entry.term_ja)
+    with_rules = sum(1 for entry in glossary if entry.rules)
+    logger.info(
+        "glossary: %d terms (ja対応 %d / ルール参照あり %d) -> %s",
+        len(glossary),
+        with_ja,
+        with_rules,
+        glossary_path.relative_to(REPO_ROOT),
+    )
     return 0
 
 

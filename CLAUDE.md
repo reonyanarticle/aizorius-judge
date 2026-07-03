@@ -22,7 +22,7 @@
 ## アーキテクチャ要点
 - **MCPは「情報検索の道具箱」に徹し、考えるのはクライアント側のLLM**（Claude Desktop / Claude Code）。すべてローカル・無料で完結。
 - FastMCP（stdio）＋ ChromaDB（永続化・cosine）＋ ローカルEmbedding（`intfloat/multilingual-e5-base`・日英併記コーパス）。
-- 検索は Hybrid：Vector＋BM25 → RRF融合 → Cross-Encoder rerank。
+- 検索は Hybrid：Vector（言語別）＋BM25＋用語集照合 → RRF融合 → 多言語rerank → **親ルール単位のグループで返却**。
 - カード情報・公式裁定は Scryfall API（認証不要・日英fuzzy対応）。
 - 詳細：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 

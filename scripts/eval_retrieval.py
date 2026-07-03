@@ -33,8 +33,28 @@ def load_questions() -> list[dict[str, object]]:
     ]
 
 
-def evaluate(searcher: HybridSearcher, k: int) -> dict[str, object]:
-    """dataset 全問で recall@k（完全集合）／must_cite recall@k（裁定の核）／MRR／レイテンシを測る。"""
+def derive_secondary_query(searcher: HybridSearcher, question: str) -> str | None:
+    """反復検索の2手目を決定論的に模擬する：質問中のMTG用語だけのキーワードクエリ。
+
+    実運用ではクライアントLLMが角度を変えたクエリを発行する。その最小近似として、
+    質問に含まれる用語集用語（特異的な長い用語から最大4語）を連ねたクエリを返す。
+    """
+    question_lower = question.lower()
+    terms = [
+        term for term, _ in searcher._index.glossary_terms if term in question_lower
+    ][:4]
+    return " ".join(terms) if terms else None
+
+
+def evaluate(
+    searcher: HybridSearcher, k: int, multi: bool = False
+) -> dict[str, object]:
+    """dataset 全問で recall@k（完全集合）／must_cite recall@k（裁定の核）／MRR／レイテンシを測る。
+
+    返却単位はルールグループ（親＋サブルール）なので、k は「グループ数」。
+    取得集合はグループに含まれる全ルール番号、MRR は最初に正解を含むグループの順位で測る。
+    multi=True で反復検索（2クエリ・union）を模擬する（セッション回収力の評価）。
+    """
     questions = load_questions()
     recalls: list[float] = []
     must_recalls: list[float] = []
@@ -47,18 +67,36 @@ def evaluate(searcher: HybridSearcher, k: int) -> dict[str, object]:
         relevant = set(question["retrieval_relevant_rules"])  # type: ignore[arg-type]
         must = set(question["evaluation_criteria"]["must_cite_rules"])  # type: ignore[index]
         started = time.perf_counter()
-        results = searcher.search(str(question["question"]), max_results=k)
+        groups = searcher.search(str(question["question"]), max_groups=k)
+        got = {rule.number for group in groups for rule in group.rules}
+        if multi:
+            secondary = derive_secondary_query(searcher, str(question["question"]))
+            if secondary:
+                for group in searcher.search(secondary, max_groups=k):
+                    got |= {rule.number for rule in group.rules}
         latencies.append((time.perf_counter() - started) * 1000)
-        got = [r.number for r in results]
-        found = relevant & set(got)
+        found = relevant & got
         recall = len(found) / len(relevant)
         recalls.append(recall)
-        must_recalls.append(len(must & set(got)) / len(must))
+        must_recalls.append(len(must & got) / len(must))
         per_category.setdefault(str(question["category"]), []).append(recall)
-        rank = next((i for i, n in enumerate(got, start=1) if n in relevant), 0)
+        rank = next(
+            (
+                i
+                for i, group in enumerate(groups, start=1)
+                if relevant & {rule.number for rule in group.rules}
+            ),
+            0,
+        )
         reciprocal_ranks.append(1.0 / rank if rank else 0.0)
         if recall < 0.5:
-            misses.append((str(question["id"]), sorted(relevant), got))
+            misses.append(
+                (
+                    str(question["id"]),
+                    sorted(relevant),
+                    [g.parent_number for g in groups],
+                )
+            )
 
     latencies.sort()
     return {
@@ -81,11 +119,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--report", action="store_true")
+    parser.add_argument(
+        "--multi", action="store_true", help="反復検索（2クエリ・union）を模擬する"
+    )
     args = parser.parse_args()
 
     index = build_or_load_index(Settings())
     searcher = HybridSearcher(index)
-    metrics = evaluate(searcher, args.k)
+    metrics = evaluate(searcher, args.k, multi=args.multi)
 
     print(
         f"n={metrics['n']} recall@{args.k}={metrics[f'recall@{args.k}']:.3f} "

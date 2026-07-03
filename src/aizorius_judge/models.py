@@ -8,14 +8,60 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 __all__ = [
+    "Card",
+    "CardRuling",
     "CorpusEntry",
     "DatasetQuestion",
     "EvaluationCriteria",
     "ExpectedAnswer",
+    "GlossaryEntry",
     "RuleEntry",
+    "RuleGroup",
     "RulesDocument",
     "SearchResult",
 ]
+
+
+class Card(BaseModel):
+    """Scryfall から取得したカード情報（ツールが返す最小限のフィールド）。"""
+
+    name: str
+    printed_name: str | None = None
+    mana_cost: str = ""
+    type_line: str = ""
+    oracle_text: str = ""
+    colors: list[str] = []
+    color_identity: list[str] = []
+    power: str | None = None
+    toughness: str | None = None
+    loyalty: str | None = None
+    keywords: list[str] = []
+
+
+class CardRuling(BaseModel):
+    """カードの公式裁定1件（Scryfall rulings）。"""
+
+    source: str
+    published_at: str
+    comment: str
+
+
+class GlossaryEntry(BaseModel):
+    """CR用語集の1項目（日英マージ済み。用語→ルール番号の決定論的対応表）。
+
+    Attributes:
+        term_en: 英語用語（例 "Menace"）。日英の突き合わせキー。
+        term_ja: 日本語用語（例 "威迫"。読み仮名は除去済み）。
+        definition_en: 英語定義文。
+        definition_ja: 日本語定義文。
+        rules: 定義文中で参照されるルール番号（"702.111" 等。セクションのみの参照は除く）。
+    """
+
+    term_en: str
+    term_ja: str | None = None
+    definition_en: str = ""
+    definition_ja: str | None = None
+    rules: list[str] = []
 
 
 class CorpusEntry(BaseModel):
@@ -49,6 +95,28 @@ class SearchResult(BaseModel):
     text_ja: str | None = None
     section: str
     category: str
+    score: float
+
+
+class RuleGroup(BaseModel):
+    """検索結果の返却単位：親ルールとそのサブルール一式。
+
+    ジャッジがCRを引くときと同様に、ヒットしたサブルール単体でなく親ルールの
+    まとまり（例: 702.11 呪禁の a〜d 全部）を返す。matched はグループ内で
+    実際に検索にヒットした番号。
+
+    Attributes:
+        parent_number: 親ルール番号（例 "702.11"）。
+        category: 章タイトル。
+        rules: 親＋サブルール（番号順）。
+        matched: 検索にヒットした番号（rules の部分集合）。
+        score: グループの代表スコア（最良ヒットのスコア）。
+    """
+
+    parent_number: str
+    category: str
+    rules: list[SearchResult]
+    matched: list[str]
     score: float
 
 

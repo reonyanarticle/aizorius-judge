@@ -138,7 +138,11 @@ class Reranker:
 
 @dataclass
 class SearchIndex:
-    """検索に必要なランタイム依存の束（lifespanで生成し、検索層へ注入する）。"""
+    """検索に必要なランタイム依存の束（lifespanで生成し、検索層へ注入する）。
+
+    glossary_terms は「照合用語（小文字化済み）→ 参照ルール番号」の対応で、
+    用語の長い順にソート済み（長い用語ほど特異的なので優先して照合する）。
+    """
 
     corpus: list[CorpusEntry]
     by_number: dict[str, CorpusEntry]
@@ -146,6 +150,34 @@ class SearchIndex:
     bm25: BM25Okapi
     embedder: EmbeddingModel
     reranker: Reranker | None
+    glossary_terms: list[tuple[str, list[str]]]
+
+
+def load_glossary_terms(
+    data_dir: Path, known_numbers: set[str]
+) -> list[tuple[str, list[str]]]:
+    """glossary.json から照合用語→ルール番号の対応表を作る。
+
+    日本語用語・英語用語の両方を照合キーにする（英語は小文字化）。参照先が
+    コーパスに実在する番号だけを残し、用語の長い順に並べる。
+    """
+    path = data_dir / "glossary.json"
+    if not path.exists():
+        logger.warning(
+            "%s が無いため用語集系統は無効（scripts/parse_rules.py で生成）", path
+        )
+        return []
+    terms: list[tuple[str, list[str]]] = []
+    for entry in json.loads(path.read_text(encoding="utf-8")):
+        rules = [n for n in entry["rules"] if n in known_numbers]
+        if not rules:
+            continue
+        if entry.get("term_ja"):
+            terms.append((entry["term_ja"], rules))
+        if entry.get("term_en"):
+            terms.append((entry["term_en"].lower(), rules))
+    terms.sort(key=lambda pair: -len(pair[0]))
+    return terms
 
 
 def _source_fingerprint(data_dir: Path, model_name: str) -> str:
@@ -217,6 +249,7 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         else None
     )
     bm25 = BM25Okapi([tokenize(entry.embedding_text()) for entry in corpus])
+    known_numbers = {entry.number for entry in corpus}
     return SearchIndex(
         corpus=corpus,
         by_number={entry.number: entry for entry in corpus},
@@ -224,4 +257,5 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         bm25=bm25,
         embedder=embedder,
         reranker=reranker,
+        glossary_terms=load_glossary_terms(settings.data_dir, known_numbers),
     )

@@ -68,40 +68,46 @@ def searcher():
 
 @pytest.mark.local_index
 def test_direct_rule_number_lookup(searcher) -> None:
-    results = searcher.search("702.9b")
-    assert results and results[0].number == "702.9b"
+    groups = searcher.search("702.9b")
+    assert groups and groups[0].parent_number == "702.9"
+    assert "702.9b" in groups[0].matched
+    assert any(r.number == "702.9b" for r in groups[0].rules)
 
 
 @pytest.mark.local_index
-def test_rule_number_prefix_returns_subrules(searcher) -> None:
-    numbers = [r.number for r in searcher.search("702.9", max_results=5)]
-    assert "702.9" in numbers[0]
+def test_rule_number_prefix_returns_group_with_subrules(searcher) -> None:
+    groups = searcher.search("702.9", max_groups=5)
+    numbers = [r.number for r in groups[0].rules]
+    assert "702.9" in numbers
     assert any(n.startswith("702.9") and n != "702.9" for n in numbers)
 
 
 @pytest.mark.local_index
 def test_japanese_query_finds_flying(searcher) -> None:
-    numbers = [
-        r.number
-        for r in searcher.search("飛行を持つクリーチャーはどうブロックされる？")
-    ]
-    assert any(n.startswith("702.9") for n in numbers)
+    groups = searcher.search("飛行を持つクリーチャーはどうブロックされる？")
+    assert any(g.parent_number.startswith("702.9") for g in groups)
+
+
+@pytest.mark.local_index
+def test_glossary_term_maps_to_rule(searcher) -> None:
+    # 用語集系統: 「威迫」→702.111（現行CRの番号。702.11は呪禁）
+    groups = searcher.search("威迫は何体でブロックする必要がありますか")
+    assert any(g.parent_number.startswith("702.111") for g in groups)
 
 
 @pytest.mark.local_index
 def test_section_filter(searcher) -> None:
-    results = searcher.search("ブロック", section="509")
-    assert results and all(r.section == "509" for r in results)
+    groups = searcher.search("ブロック", section="509")
+    assert groups and all(r.section == "509" for g in groups for r in g.rules)
 
 
 @pytest.mark.local_index
 def test_recall_regression(searcher) -> None:
-    """検索品質の回帰ゲート（EVALUATION.md 第1層・高速構成で計測）。
+    """検索品質の回帰ゲート（EVALUATION.md 第1層・高速構成・グループ返却で計測）。
 
     しきい値は**達成済みの実力の少し下**に置く回帰検知であり、目標値ではない。
-    高速構成の実測（recall@5=0.429 / must_cite@5=0.636 / MRR=0.607）に対し
-    0.40 / 0.60 / 0.57 をゲートとする。品質構成（rerankあり・must_cite 0.805）の
-    計測は scripts/eval_retrieval.py（毎コミットには重すぎるため）。
+    しきい値の根拠となる実測値は evaluation/reports/retrieval-eval.md。
+    品質構成（rerankあり）の計測は scripts/eval_retrieval.py（毎コミットには重すぎるため）。
     """
     import sys
     from pathlib import Path
@@ -110,8 +116,8 @@ def test_recall_regression(searcher) -> None:
     from eval_retrieval import evaluate  # type: ignore[import-not-found]
 
     metrics = evaluate(searcher, k=5)
-    assert metrics["recall@5"] >= 0.40, f"recall@5 回帰: {metrics['recall@5']:.3f}"
+    assert metrics["recall@5"] >= 0.60, f"recall@5 回帰: {metrics['recall@5']:.3f}"
     assert (
-        metrics["must_cite_recall@5"] >= 0.60
+        metrics["must_cite_recall@5"] >= 0.75
     ), f"must_cite recall@5 回帰: {metrics['must_cite_recall@5']:.3f}"
-    assert metrics["mrr"] >= 0.57, f"MRR 回帰: {metrics['mrr']:.3f}"
+    assert metrics["mrr"] >= 0.68, f"MRR 回帰: {metrics['mrr']:.3f}"
