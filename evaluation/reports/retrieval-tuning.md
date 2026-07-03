@@ -1,4 +1,4 @@
-# 検索チューニング実験（Phase 1）
+# 検索チューニング実験
 
 - dataset 110問（日本語クエリ）/ recall@5・MRR / 候補pool=50
 
@@ -16,7 +16,7 @@
 | rrf(vector[dual]+vector[combined]+bm25[ja]) | 0.423 | 0.612 |
 | rrf(dual+bm25[combined]) + bge-reranker-v2-m3 | 0.519 | 0.757 |
 
-## 追加実験と最終構成（Phase 1 確定）
+## 追加実験と最終構成（確定）
 
 | 構成 | recall@5 | must_cite@5 | MRR | p50/p95 |
 |---|---|---|---|---|

@@ -66,7 +66,7 @@ sequenceDiagram
 - 該当なしは**エラーではなく分かりやすいメッセージ**を返す（クライアントLLMが次の行動を判断できるように）。
 - Scryfall はレート制限を守る：リクエスト間に 50–100ms sleep、User-Agent 付与、`httpx` で async 呼び出し。
 
-## 4. 検索パイプライン（Hybrid Search・Phase 1 で計測確定）
+## 4. 検索パイプライン（Hybrid Search・計測で確定）
 `Vector（言語別）＋ BM25 ＋ 用語集照合 → RRF融合（k=60）→ 多言語rerank → 親ルールでグループ化して返却`
 
 - **Vectorは言語別インデックス（決定）**：1ルールにつき英語・日本語で別々のベクトルを持ち（`number#en` / `number#ja`）、検索時にルール番号で重複排除する。
@@ -74,7 +74,7 @@ sequenceDiagram
 - **第3系統＝用語集照合（決定）**：CR用語集（約800語・日英対応）をパースし、クエリ中のMTG用語（「威迫」「統率者税」等）を定義ルール番号へ決定論的に対応付ける（`data/glossary.json`。LLM不使用）。キーワード的なクエリに対する精度の柱。
 - **返却単位＝親ルールのグループ（決定）**：ヒットしたサブルール単体でなく、親ルール＋全サブルール（例: 702.11 呪禁の a〜d）を1グループとして返す。正解ルールは兄弟クラスタで現れることが多く（エラー分析）、ジャッジの実務とも一致する。`max_results`＝グループ数。
 - **Reranker：`BAAI/bge-reranker-v2-m3`（多言語・決定）**。設計原案候補の `ms-marco-MiniLM-L-6-v2`（英語学習）は多言語要件に合わず不採用。`RERANKER_MODEL` を空にすると rerank なしの高速構成になる。
-- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。E5系の接頭辞（`query: ` / `passage: `）を付与。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で明確に優位。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
+- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。E5系の接頭辞（`query: ` / `passage: `）を付与。初期スパイクの bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で明確に優位。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
 - **実測性能と構成の使い分け**（M4/MPS・110問・[../evaluation/reports/retrieval-tuning.md](../evaluation/reports/retrieval-tuning.md)）：
 
   | 構成 | recall@5 | must_cite recall@5 | MRR | p50 |
@@ -107,7 +107,7 @@ sequenceDiagram
 3. 同時に BM25 インデックスを構築
 4. ファイルハッシュ＋使用モデル名を collection metadata に記録（再構築判定に使用）
 
-### 差分更新（Phase 4・LLM不使用）
+### 差分更新（自動更新フェーズ・LLM不使用 → [PLAN.md](PLAN.md)）
 - 新CRを取得しハッシュ比較 → 変わっていれば**文字列比較で差分計算**。
 - `modified` は delete＋re-add、`added` は add、`removed` はアーカイブ。BM25 は再構築。
 

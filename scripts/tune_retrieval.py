@@ -1,4 +1,4 @@
-"""検索チューニング実験（Phase 1）：コーパス言語戦略×融合×rerank を一括比較する。
+"""検索チューニング実験：コーパス言語戦略×融合×rerank を一括比較する。
 
 ChromaDBを介さず numpy で直接比較する（実験の反復を速くするため）。
 勝った構成を data_loader / search の本実装に反映する。
@@ -198,7 +198,7 @@ def main() -> int:
 
     out = REPO_ROOT / "evaluation" / "reports" / "retrieval-tuning.md"
     lines: list[Any] = [
-        "# 検索チューニング実験（Phase 1）",
+        "# 検索チューニング実験",
         "",
         f"- dataset 110問（日本語クエリ）/ recall@5・MRR / 候補pool={POOL}",
         "",

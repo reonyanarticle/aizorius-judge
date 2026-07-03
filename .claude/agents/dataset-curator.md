@@ -1,6 +1,6 @@
 ---
 name: dataset-curator
-description: 評価データセット(evaluation/dataset.jsonl)の起案・出典検証・差分提示を行う。「dataset作って」「評価問題を増やして」「rules_citedを検証して」で起動、またはPhase 0のdataset作成（110問）やPhase 3の拡充で積極的（proactively）に起動する。各問のrules_cited/retrieval_relevant_rulesをCR原文と照合する品質番人。ただしルール正誤の最終署名は人間で、本エージェントは検証済み候補の提示までを担う。
+description: 評価データセット(evaluation/dataset.jsonl)の起案・出典検証・差分提示を行う。「dataset作って」「評価問題を増やして」「rules_citedを検証して」で起動、またはdataset作成・拡充の局面で積極的（proactively）に起動する。各問のrules_cited/retrieval_relevant_rulesをCR原文と照合する品質番人。ただしルール正誤の最終署名は人間で、本エージェントは検証済み候補の提示までを担う。
 model: opus
 memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, WebSearch, WebFetch

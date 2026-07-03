@@ -1,4 +1,4 @@
-"""Scryfallを用いた実カード分析（Phase 2 前倒し検証）。
+"""Scryfallを用いた実カード分析（MCP層の前倒し検証）。
 
 実在カードで次を検証し、レポートを書く:
 1. 日英カード名の fuzzy 解決と公式裁定の取得（lookup_card / get_card_rulings 経路）
@@ -52,7 +52,7 @@ async def main() -> int:
     }
 
     lines: list[str] = [
-        "# 実カード分析（Scryfall連携・Phase 2 前倒し検証）",
+        "# 実カード分析（Scryfall連携・MCP層の前倒し検証）",
         "",
         "実在カードで「カード特定→キーワード→CRルール」の動線を検証した結果。",
         "",

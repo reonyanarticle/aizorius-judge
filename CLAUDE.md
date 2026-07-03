@@ -37,4 +37,4 @@
 - 実装の区切りでは `/qa` → `/mcp-smoke` →（検索に触れたら）`/eval` の順で自己検証してから完了報告する。
 
 ## 実装フェーズ（eval-first）
-- Phase 0: データ基盤＋ゴールデンデータセット → Phase 1: コア検索エンジン（MCP非依存・recall測定しながら） → Phase 2: MCP層＋Scryfall → Phase 3: 統合評価＋拡充 → Phase 4: 自動更新。詳細：[docs/PLAN.md](docs/PLAN.md)。
+- データ基盤＋dataset → コア検索エンジン → **生成層（裁定）の評価** → MCP層＋Scryfall → 統合評価＋拡充 → 自動更新、の順。**フェーズ番号と正本は [docs/PLAN.md](docs/PLAN.md) のみ**（他所にフェーズ番号を書かない → [.claude/rules/documentation.md](.claude/rules/documentation.md)）。
