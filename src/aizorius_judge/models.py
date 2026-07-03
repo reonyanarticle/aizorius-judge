@@ -8,12 +8,48 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 __all__ = [
+    "CorpusEntry",
     "DatasetQuestion",
     "EvaluationCriteria",
     "ExpectedAnswer",
     "RuleEntry",
     "RulesDocument",
+    "SearchResult",
 ]
+
+
+class CorpusEntry(BaseModel):
+    """検索コーパスの1ルール（日英併記。インデックス構築と検索結果の元データ）。
+
+    Attributes:
+        number: ルール番号（例 "702.9b"）。コーパス内で一意。
+        text_en: 英語本文（正文）。
+        text_ja: 日本語本文（和訳。対応する番号が無い場合は None）。
+        section: 大区分の番号（例 "702"）。
+        category: 章タイトル（例 "Keyword Abilities"）。
+    """
+
+    number: str
+    text_en: str
+    text_ja: str | None = None
+    section: str
+    category: str
+
+    def embedding_text(self) -> str:
+        """Embedding・BM25 に投入する日英併記テキスト（bake-off と同形式）。"""
+        base = f"{self.number} {self.text_en}"
+        return f"{base}\n{self.text_ja}" if self.text_ja else base
+
+
+class SearchResult(BaseModel):
+    """検索結果の1件（スコア付きルール）。"""
+
+    number: str
+    text_en: str
+    text_ja: str | None = None
+    section: str
+    category: str
+    score: float
 
 
 class RuleEntry(BaseModel):

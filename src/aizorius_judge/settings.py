@@ -23,4 +23,5 @@ class Settings(BaseSettings):
 
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_device: str = "mps"
+    reranker_model: str | None = "BAAI/bge-reranker-v2-m3"
     data_dir: Path = Path("data")

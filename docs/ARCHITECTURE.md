@@ -66,13 +66,20 @@ sequenceDiagram
 - 該当なしは**エラーではなく分かりやすいメッセージ**を返す（クライアントLLMが次の行動を判断できるように）。
 - Scryfall はレート制限を守る：リクエスト間に 50–100ms sleep、User-Agent 付与、`httpx` で async 呼び出し。
 
-## 4. 検索パイプライン（Hybrid Search）
-- **Vector検索**（意味的類似・cosine）＋ **BM25**（キーワード一致）の2系統で検索。
-- 融合は **RRF**（Reciprocal Rank Fusion、定数 k=60 が標準）を基本とする。重み付きスコア融合（α）との比較は Phase 1 の検索単体評価（recall@5）で確定する。
-- 上位のみ **Cross-Encoder** で rerank。候補は `ms-marco-MiniLM-L-6-v2` だが**英語 MS MARCO 学習のため日本語クエリで逆効果になりうる**。Phase 1 で rerank 有/無を日本語問で比較し、劣化するなら外すか多言語 reranker に差し替える。
-- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。コーパスは**日英併記**（1ルールに英語＋日本語テキストを連結）、E5系の接頭辞（`query: ` / `passage: `）を付与する。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で、日本語クエリ110問に対し recall@5 0.401 / hit@5 0.77 と最良。`paraphrase-multilingual-MiniLM-L12-v2` は recall@5 0.20 で明確に劣後し不採用。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
-- **チャンク粒度は引き続きチューニング変数**：現状はルール（サブルール）単位＋日英併記。細則の分割・結合は Phase 1 で recall@5 を見ながら調整する。
-- **性能目標（目安）**：`search_rules` p95 ≤ 2秒（M4/MPS・rerank込み）。クライアントは1裁定で最大3回呼ぶ前提で、rerank のコストはこの目標に照らして判断する。
+## 4. 検索パイプライン（Hybrid Search・Phase 1 で計測確定）
+- **Vector検索**（cosine）＋ **BM25**（キーワード一致）→ **RRF融合（k=60）** → **多言語 Cross-Encoder rerank**（上位50件）。
+- **Vectorは言語別インデックス（決定）**：1ルールにつき英語・日本語で別々のベクトルを持ち（`number#en` / `number#ja`）、検索時にルール番号で重複排除する。日英併記1本より recall@5 が+0.02、日本語単体と同等で英語クエリにも強い。
+- **BM25 は日英併記テキスト**に対して、形態素解析器なしのトークナイザ（英数字は単語・ルール番号は1トークン・日本語は文字バイグラム）で構築。
+- **Reranker：`BAAI/bge-reranker-v2-m3`（多言語・決定）**。設計原案候補の `ms-marco-MiniLM-L-6-v2`（英語学習）は多言語要件に合わず不採用。軽量多言語（mmarco-mMiniLMv2）も品質劣化が大きく不採用。`RERANKER_MODEL` を空にすると rerank なしの高速構成になる。
+- Embedding モデル：**`intfloat/multilingual-e5-base`（決定）**。E5系の接頭辞（`query: ` / `passage: `）を付与。Phase 0 の bake-off（[../evaluation/reports/spike-embedding.md](../evaluation/reports/spike-embedding.md)）で `paraphrase-multilingual-MiniLM-L12-v2`（recall@5 0.20）に対し明確に優位。デバイスは `mps`（Apple Silicon）、フォールバック `cpu`。
+- **実測性能と構成の使い分け**（M4/MPS・110問・[../evaluation/reports/retrieval-tuning.md](../evaluation/reports/retrieval-tuning.md)）：
+
+  | 構成 | recall@5 | must_cite recall@5 | MRR | p50 / p95 |
+  |---|---|---|---|---|
+  | 既定（rerank あり） | 0.519 | **0.805** | 0.753 | 4.6s / 9.1s |
+  | 高速（rerank なし） | 0.429 | 0.636 | 0.607 | 29ms / 50ms |
+
+  品質とレイテンシは強いトレードオフ（poolや入力長を削るとどの案も品質が大きく崩れる）で、裁定支援ではLLMクライアントのツール呼び出しに数秒が許容されるため**品質優先を既定**とする。レイテンシ短縮（ONNX化・蒸留reranker等）は Phase 2 以降の課題。
 
 ## 5. データソースとパイプライン
 
