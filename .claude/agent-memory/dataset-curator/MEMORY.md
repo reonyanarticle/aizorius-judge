@@ -5,3 +5,4 @@
 - [Keyword rule numbers](keyword-rule-numbers.md) — keywords(702)・処理(701)の検証済み番号対応。Menaceは702.111（呪禁702.11と混同注意）
 - [Commander rule numbers](commander-rules.md) — commander(903系)・共闘(702.124)・統率者ダメージ(903.10a/704.6c)の検証済み根拠と落とし穴
 - [Release notes FAQ sourcing](release-notes-faq.md) — 公式リリースノート由来問題の作り方＋検証済み番号(707.2/712.8a/603.12等)、見送りFAQ
+- [Card interactions notes](card-interactions-notes.md) — card_interactions(個別カード×ルール)の検証済み番号・Scryfall手順・カテゴリ設計提案

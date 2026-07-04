@@ -24,8 +24,10 @@
    - 採点基準：結論の正誤（〜5点）／must_cite_rules の引用（〜3点）／key_facts の網羅（〜2点）。
      forbidden_mistakes に抵触したら結論点を0にする。
 4. **集計とレポート**：`uv run python scripts/report_generation_eval.py`
-   → `evaluation/reports/generation-eval.md`（**全問の裁定文込み**・スコア・カテゴリ別集計・不合格問の一覧）。
-   人間が回答を確認する場所はこのファイル。
+   → コミットする `evaluation/reports/generation-eval.md` は**定量サマリ＋不合格詳細＋カテゴリ代表例**まで
+   （[.claude/rules/documentation.md](../.claude/rules/documentation.md) の評価成果物のコミット方針）。
+   **全問の裁定文**はローカルの `gen-eval/generation-eval-full.md`（gitignore済・再現は本手順1〜4）。
+   人間が回答を確認する場所はこの2ファイル。
 5. **LLM-judge較正**：スコア分布から15〜20問を抽出し、裁定文と golden を並べた較正シート
    （`gen-eval/calibration.md`）を作る。**人間が同じ基準で採点**し、LLM採点との一致率（±1点以内の割合）を
    確認する。大きくズレる場合は採点基準を修正して再採点する（→ [../docs/EVALUATION.md](../docs/EVALUATION.md) §2）。
