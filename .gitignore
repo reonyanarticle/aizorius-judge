@@ -226,3 +226,4 @@ data/comprehensive_rules*.json
 data/glossary.json
 evaluation/reports/gen-eval/
 .DS_store
+evaluation/holdout/
