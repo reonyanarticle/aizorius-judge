@@ -28,7 +28,9 @@ allowed-tools: Bash(ls:*), Bash(find:*), Bash(grep:*), Read, Glob, Grep
 4. **正本の一意性（軽チェック）**：docs 間で同じ決定が二重記載されていないか、目視で疑わしい箇所を挙げる
    （重複しそうなら片方を正本にし、もう片方はリンクのみにする規約）。
 5. **フェーズ番号の閉じ込め**：フェーズ番号（Phase 0/1/1.5…）が `docs/PLAN.md` 以外に無いこと。
-   - `grep -rnE "Phase [0-9]" README.md CLAUDE.md docs/ .claude/rules .claude/skills .claude/agents src/ scripts/ tests/ evaluation/ | grep -v docs/PLAN.md` が0件（ファイル名も対象。MTG用語の "Combat Phase" 等の英語カテゴリ名は除外してよい）。
+   - `grep -rnE "Phase [0-9]" README.md CLAUDE.md docs/ .claude/rules .claude/skills .claude/agents src/ scripts/ tests/ evaluation/ | grep -v "^docs/PLAN.md:"` が0件（ファイル名も対象。MTG用語の "Combat Phase" 等の英語カテゴリ名は除外してよい）。
+   - ⚠ 除外は必ず `"^docs/PLAN.md:"`（**ファイル名先頭一致**）で行う。`grep -v docs/PLAN.md` だと「PLAN.md へのリンクを含む行」まで内容で除外され、偽陰性になる（2026-07-04 に README の Phase 記載を2件見逃した実績）。
+   - 既知の許容：`.claude/rules/documentation.md` と `.claude/agents/rules-reviewer.md` の「規約そのものの説明文」（"Phase 0/1/1.5…" という例示）、および本ファイルのコマンド例。
 
 ## 出力
 各項目を PASS / FAIL（＋該当ファイル・行）で表にまとめ、FAIL には最小の修正案を1行添える。

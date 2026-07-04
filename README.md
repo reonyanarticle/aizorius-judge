@@ -29,11 +29,11 @@ AIzorius Judge MCPサーバー ※LLM呼び出しなし
 | ファイル | 内容 |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 構成・実行フロー・ツール契約・検索/データパイプライン |
-| [docs/PLAN.md](docs/PLAN.md) | 開発フェーズ（Phase 0〜4・eval-first）と環境前提 |
+| [docs/PLAN.md](docs/PLAN.md) | 開発フェーズ（eval-first）と環境前提 |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | 4層評価（検索/単体/統合/外部）・データセット仕様・合格基準 |
 
 ## ステータス
-- フェーズ：設計完了、**Phase 0（データ基盤＋ゴールデンデータセット）着手前**。コードは未実装。開発は eval-first（dataset が先、MCP化は後）→ [docs/PLAN.md](docs/PLAN.md)。
+- ゴールデンデータセット（125問・人間承認済み）、コア検索エンジン（Hybrid＋rerank＋親グループ返却）、生成層評価（110問で合格率100%・LLM-judge較正済み）まで完了。次は MCP 層の実装。工程の正本は [docs/PLAN.md](docs/PLAN.md)。
 
 ## セットアップ
 ```bash
@@ -47,3 +47,13 @@ cp .env.example .env   # 任意（デフォルトで動く。EMBEDDING_MODEL / E
 ## 開発者向け
 - 開発のルール・禁止事項・アーキ要点は **[CLAUDE.md](CLAUDE.md)**（詳細ルールは [.claude/rules/](.claude/rules/) に集約）。
 - Python の細則（uv / Ruff / Black / basedpyright / 型ヒント）は [.claude/rules/python.md](.claude/rules/python.md)。
+
+## ライセンス
+- 本リポジトリ（コード・ドキュメント・評価データセット）は **MIT License**（[LICENSE](LICENSE)）。
+- 外部データの取り込みは **CC0 / CC BY（帰属のみ）を優先**する。継承（share-alike）系は本体に混ぜず別ファイル＋個別表記に隔離し、非商用限定（NC）は取り込まない。方針の正本は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §5。
+- **総合ルール（CR）本文・カードテキストはリポジトリに含めない**（ローカルで取得・生成する → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §5）。
+
+### Fan Content Policy
+AIzorius Judge は、Wizards of the Coast のファンコンテンツ・ポリシーに認められた非公式のファンコンテンツです。Wizards of the Coast の承認・後援を受けたものではありません。使用している素材の一部は Wizards of the Coast LLC の財産です。©Wizards of the Coast LLC.
+
+*AIzorius Judge is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.*

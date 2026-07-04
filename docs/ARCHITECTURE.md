@@ -103,6 +103,15 @@ sequenceDiagram
 - **版固定**：取得したCRのURL・発効日・SHA-256 を `data/MANIFEST.json`（メタデータのみ・コミット可）に記録する。
 - **英語CRが正文（authoritative）**。dataset の出典検証は英語CRの版に対して行う。日本語CR（和訳）は英語版に遅れて改訂されるため（版ズレが常態）、日本語CRは検索インデックス・日本語表示用と位置づけ、MANIFEST で両者の版を管理する。
 
+### プロジェクトのライセンスと外部データの取り込み基準（2026-07-04 決定）
+- 本リポジトリ（コード・ドキュメント・評価データセット）は **MIT License**（単一 LICENSE）。README に Fan Content Policy の定型文言を掲示する。
+- 外部Q&Aデータの取り込みは**利用条件を一次情報で確認してから**（推測で進めない）。判定基準:
+  - **CC0 / CC BY（帰属のみ）→ 優先して取り込み可**。`source` に出典・ライセンスを明記し、必要な帰属表示を README または NOTICE に記載する。
+  - **CC BY-SA / GPL系（継承つき）→ 本体（dataset.jsonl）に混ぜない**。使う場合は別ファイル（例 `dataset-external.jsonl`）＋個別ライセンス表記に隔離し、本体の MIT を維持する。
+  - **CC BY-NC 等の非商用限定 → 取り込まない**（OSS配布と衝突）。
+  - ライセンスとは別に**利用規約の制約**（例: RulesGuru の「ML利用は要許諾」）はライセンス互換でも許諾取得が必要。
+- 取り込み時の品質運用は評価データセットの既存規約のまま（逐語コピーなし・言い換え＋CR照合・人間承認 → [EVALUATION.md](EVALUATION.md) §3）。
+
 ### インデックス構築（初回 / モデル変更時）
 1. CR（PDF/TXT）を `scripts/parse_rules.py` でJSON化（`{number, text, section, category}` の配列）
 2. `data_loader.py` が ChromaDB へ投入（Embedding は自動計算＝ローカル）
