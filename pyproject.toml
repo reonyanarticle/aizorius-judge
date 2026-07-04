@@ -3,6 +3,8 @@ name = "aizorius-judge"
 version = "0.1.0"
 description = "MTGルール裁定を支援するMCPサーバー（検索の道具箱。推論はクライアント側LLM）"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "chromadb>=1.5.9",

@@ -103,6 +103,24 @@ sequenceDiagram
 - **版固定**：取得したCRのURL・発効日・SHA-256 を `data/MANIFEST.json`（メタデータのみ・コミット可）に記録する。
 - **英語CRが正文（authoritative）**。dataset の出典検証は英語CRの版に対して行う。日本語CR（和訳）は英語版に遅れて改訂されるため（版ズレが常態）、日本語CRは検索インデックス・日本語表示用と位置づけ、MANIFEST で両者の版を管理する。
 
+### プロジェクトのライセンスと外部データの取り込み基準（2026-07-04 決定）
+- 本リポジトリ（コード・ドキュメント・評価データセット）は **MIT License**（単一 LICENSE）。README に Fan Content Policy の定型文言を掲示する。
+- 外部Q&Aデータの取り込みは**利用条件を一次情報で確認してから**（推測で進めない）。判定基準:
+  - **CC0 / CC BY（帰属のみ）→ 優先して取り込み可**。`source` に出典・ライセンスを明記し、必要な帰属表示を README または NOTICE に記載する。
+  - **CC BY-SA / GPL系（継承つき）→ 本体（dataset.jsonl）に混ぜない**。使う場合は別ファイル（例 `dataset-external.jsonl`）＋個別ライセンス表記に隔離し、本体の MIT を維持する。
+  - **CC BY-NC 等の非商用限定 → 取り込まない**（OSS配布と衝突）。
+  - ライセンスとは別に**利用規約の制約**（例: RulesGuru の「ML利用は要許諾」）はライセンス互換でも許諾取得が必要。
+- 取り込み時の品質運用は評価データセットの既存規約のまま（逐語コピーなし・言い換え＋CR照合・人間承認 → [EVALUATION.md](EVALUATION.md) §3）。
+
+外部Q&Aソースの一次調査結果（2026-07-04。**CC0/CC BY の MTGルールQ&Aは現存しない**）:
+
+| ソース | 条件（一次確認済み） | 判定 |
+|---|---|---|
+| RulesGuru（rulesguru.org・約1,500問・人手検証） | 非商用＋帰属で利用可だが「**ML模型の開発への利用は明示許諾が必要**」（About原文）。許諾は撤回権付き | **要許諾**（連絡先 is.aack@yahoo.com）。許諾を得ても非商用・撤回権付きのため**MITリポジトリへの同梱は不可**＝ローカル取得・非再配布（CRと同方式）が前提 |
+| boardgames.stackexchange.com（MTGタグ） | 投稿は CC BY-SA 4.0（投稿URL＋著者プロフィールへのリンク帰属が必須）。**公式ダンプは2024年以降「LLM訓練に使わない」同意付き** | **隔離すれば可**（本体に混ぜず別ファイル or ローカル限定）。一括ダンプでなく対象タグの個別取得が無難。ライセンス版の切替日ページは未確認（取り込み前に人手確認） |
+| Hugging Face 上のMTG QAデータセット（MTG-Eval 80k ほか5件） | 全件**ライセンス宣言なし**または無ライセンス上流のマージ。多くはGPT合成で正解保証もない | **不可** |
+| Cranial Insertion（判事執筆の週刊Q&A） | 再利用許諾条項なし＝全権利留保 | **要許諾**（moko@cranial-insertion.com） |
+
 ### インデックス構築（初回 / モデル変更時）
 1. CR（PDF/TXT）を `scripts/parse_rules.py` でJSON化（`{number, text, section, category}` の配列）
 2. `data_loader.py` が ChromaDB へ投入（Embedding は自動計算＝ローカル）
