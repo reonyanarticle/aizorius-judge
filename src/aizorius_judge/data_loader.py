@@ -170,10 +170,13 @@ class SearchIndex:
 # セクション参照を展開する章の大きさ上限（親ルール数）。大きな章（113誘発型能力等）を
 # 汎用語から展開すると候補が洪水して全指標が悪化するため、小さな章（ステップ・スタック等）に限る
 GLOSSARY_SECTION_MAX_PARENTS = 8
+# 大きな章のセクション参照を「章の先頭K親」（定義・動作原理が並ぶ）に絞って展開する既定値。
+# 全スキップ比で recall@7 0.746→0.752 / must_cite@7 0.895→0.905・劣化なし（2026-07-04 計測）
+GLOSSARY_LARGE_SECTION_HEAD = 8
 
 
 def load_glossary_terms(
-    data_dir: Path, known_numbers: set[str]
+    data_dir: Path, known_numbers: set[str], large_section_head: int = 0
 ) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
     """glossary.json から照合用語→ルール番号の対応表を2系統作る。
 
@@ -197,6 +200,10 @@ def load_glossary_terms(
         section, _, rest = number.partition(".")
         if rest and rest.isdigit():  # レター無し＝親ルール
             parents_by_section.setdefault(section, []).append(number)
+    for parents in parents_by_section.values():
+        # 文字列ソートだと "903.10" が "903.2" より前に来る。「章の先頭K親」を数値順で
+        # 取れるよう数値ソートにする
+        parents.sort(key=lambda n: int(n.partition(".")[2]))
 
     explicit_terms: list[tuple[str, list[str]]] = []
     section_terms: list[tuple[str, list[str]]] = []
@@ -206,7 +213,11 @@ def load_glossary_terms(
         for section in entry.get("sections", []):
             parents = parents_by_section.get(section, [])
             if len(parents) > GLOSSARY_SECTION_MAX_PARENTS:
-                continue
+                # 大きな章は全展開すると候補が洪水する（実測）。large_section_head 指定時のみ
+                # 章の**先頭K親**（章の定義・動作原理が並ぶ）に絞って展開する
+                if large_section_head <= 0:
+                    continue
+                parents = parents[:large_section_head]
             section_rules += [n for n in parents if n not in rules]
         keys = []
         if entry.get("term_ja"):
@@ -328,7 +339,7 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
     bm25 = BM25Okapi([tokenize(entry.embedding_text()) for entry in corpus])
     known_numbers = {entry.number for entry in corpus}
     glossary_terms, glossary_section_terms = load_glossary_terms(
-        settings.data_dir, known_numbers
+        settings.data_dir, known_numbers, large_section_head=GLOSSARY_LARGE_SECTION_HEAD
     )
     return SearchIndex(
         corpus=corpus,

@@ -102,3 +102,27 @@ def test_load_glossary_terms_section_expansion_respects_cap(tmp_path: Path) -> N
 
 def test_load_glossary_terms_missing_file_returns_empty(tmp_path: Path) -> None:
     assert load_glossary_terms(tmp_path, {"100.1"}) == ([], [])
+
+
+def test_load_glossary_terms_large_section_head(tmp_path: Path) -> None:
+    # 大きな章でも large_section_head 指定時は先頭K親（数値順）だけ展開される
+    big = [f"903.{i}" for i in range(1, 15)]
+    _write_glossary(
+        tmp_path,
+        [
+            {
+                "term_en": "Commander",
+                "term_ja": "統率者",
+                "rules": [],
+                "sections": ["903"],
+            }
+        ],
+    )
+    _, section_terms = load_glossary_terms(tmp_path, set(big), large_section_head=4)
+    expanded = dict(section_terms)["統率者"]
+    assert expanded == [
+        "903.1",
+        "903.2",
+        "903.3",
+        "903.4",
+    ]  # 文字列順でなく数値順の先頭

@@ -12,8 +12,9 @@
 
 ## 手順
 1. **検索コンテキストの事前計算**：`uv run python scripts/prepare_generation_contexts.py`
-   → `evaluation/reports/gen-eval/contexts.jsonl`（品質構成＋反復検索2クエリ、上位グループの本文。
-   CR本文を含むため**コミットしない**）。
+   → `evaluation/reports/gen-eval/contexts.jsonl`（品質構成＋反復検索union＝質問文・用語キーワード・
+   あれば実LLM言い換え（下記の生成規約）、上位グループの本文。CR本文を含むため**コミットしない**）。
+   部分再生成は `--ids id1,id2`（→ `contexts-partial.jsonl`）。
 2. **裁定生成**（生成エージェント・カテゴリ別バッチ）：各問について contexts の検索結果**だけ**を根拠に、
    日本語で裁定を書く。出力（1問=1行のJSONL・`gen-eval/answers-<batch>.jsonl`）：
    `{"id", "answer": {"conclusion": "...", "rules_cited": [...], "explanation": "..."}}`
@@ -36,3 +37,17 @@
 - 各問スコア ≥7/10 で合格、全体精度（合格率）80%以上（[../docs/EVALUATION.md](../docs/EVALUATION.md)）。
 - 不合格問は「検索起因（根拠が取れていない）／生成起因（根拠はあるのに結論を誤った）／dataset起因」に
   分類してレポートに記録する（次の改善の入力にする）。
+
+## 言い換えクエリの生成（反復検索評価の入力）
+
+検索単体評価の反復検索模擬（`scripts/eval_retrieval.py --multi`）は、決定論的な2クエリ目
+（質問文中の用語集用語の機械抽出）に加えて、**実LLMが生成した言い換えクエリ**を union に
+加えられる（`--rephrasings evaluation/reports/gen-eval/rephrasings.jsonl`）。
+実運用でクライアントLLMが行う「口語→CR語彙への言い換え」を正直に模擬するための入力で、
+生成規約を破ると評価が汚染される：
+
+- 生成エージェントには**質問文（id と question）だけ**を渡す。dataset.jsonl の golden・
+  引用ルール番号・検索結果を見せない。
+- クエリに**ルール番号を書かせない**（番号を知っている前提は模擬として不正）。
+- 手書きの言い換えクエリを固定追加しない（答えの先読みで評価を汚染する）。
+- 出力は `gen-eval/rephrasings.jsonl`（`{"id", "queries": [2本]}`。gitignore 済み・再現は本節の手順）。

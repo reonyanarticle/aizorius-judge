@@ -45,13 +45,19 @@ def derive_secondary_query(searcher: HybridSearcher, question: str) -> str | Non
 
 
 def evaluate(
-    searcher: HybridSearcher, k: int, multi: bool = False
+    searcher: HybridSearcher,
+    k: int,
+    multi: bool = False,
+    rephrasings: dict[str, list[str]] | None = None,
 ) -> dict[str, object]:
     """dataset 全問で recall@k（完全集合）／must_cite recall@k（裁定の核）／MRR／レイテンシを測る。
 
     返却単位はルールグループ（親＋サブルール）なので、k は「グループ数」。
     取得集合はグループに含まれる全ルール番号、MRR は最初に正解を含むグループの順位で測る。
     multi=True で反復検索（2クエリ・union）を模擬する（セッション回収力の評価）。
+    rephrasings は実LLMが**元質問だけ**から生成した言い換えクエリ（id→クエリ列。
+    multi 時に union へ加える）。golden を見た手書きクエリを混ぜると評価が汚染される
+    ため、生成手順は evaluation/test_runner.md の言い換え生成の節に従うこと。
 
     card_interactions カテゴリは lookup_card が主役の問のため、検索単体の母集団から
     除外する（docs/EVALUATION.md §3。混ぜると recall 指標が歪む）。
@@ -71,9 +77,14 @@ def evaluate(
         groups = searcher.search(str(question["question"]), max_groups=k)
         got = {rule.number for group in groups for rule in group.rules}
         if multi:
+            extra_queries = []
             secondary = derive_secondary_query(searcher, str(question["question"]))
             if secondary:
-                for group in searcher.search(secondary, max_groups=k):
+                extra_queries.append(secondary)
+            if rephrasings:
+                extra_queries += rephrasings.get(str(question["id"]), [])
+            for extra in extra_queries:
+                for group in searcher.search(extra, max_groups=k):
                     got |= {rule.number for rule in group.rules}
         latencies.append((time.perf_counter() - started) * 1000)
         found = relevant & got
@@ -123,11 +134,27 @@ def main() -> int:
     parser.add_argument(
         "--multi", action="store_true", help="反復検索（2クエリ・union）を模擬する"
     )
+    parser.add_argument(
+        "--rephrasings",
+        type=Path,
+        default=None,
+        help=(
+            "実LLM生成の言い換えクエリ JSONL（{'id','queries'}）。--multi 時に union に"
+            "加える。生成手順は evaluation/test_runner.md（golden を見ない）"
+        ),
+    )
     args = parser.parse_args()
+
+    rephrasings: dict[str, list[str]] | None = None
+    if args.rephrasings:
+        rephrasings = {}
+        for line in args.rephrasings.read_text(encoding="utf-8").splitlines():
+            item = json.loads(line)
+            rephrasings[str(item["id"])] = [str(q) for q in item["queries"]]
 
     index = build_or_load_index(Settings())
     searcher = HybridSearcher(index)
-    metrics = evaluate(searcher, args.k, multi=args.multi)
+    metrics = evaluate(searcher, args.k, multi=args.multi, rephrasings=rephrasings)
 
     print(
         f"n={metrics['n']} recall@{args.k}={metrics[f'recall@{args.k}']:.3f} "
