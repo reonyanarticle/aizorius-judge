@@ -33,6 +33,10 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
@@ -51,11 +55,7 @@
     ],
     "ask": [
       "Bash(rm:*)",
-      "Bash(mv:*)",
-      "Bash(git push:*)",
-      "Bash(git reset:*)",
-      "Bash(git checkout:*)",
-      "Bash(git restore:*)"
+      "Bash(mv:*)"
     ],
     "deny": [
       "Read(./.env)",
