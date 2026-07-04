@@ -9,7 +9,7 @@
 |---|---|---|
 | **0. データ基盤＋ゴールデンデータセット** | CR原文の入手・**利用条件の一次確認**・版固定（発効日＋ハッシュ）、`parse_rules.py`（CR→JSON）、評価データセット110問（起案100＋公式リリースノートFAQ由来10）の作成・**出典検証・人間承認**、Embeddingモデルのスパイク検証（bake-off） | dataset 110問が出典検証済み＋人間承認済み／CR JSONが生成できる／Embedding方針が確定 |
 | **1. コア検索エンジン（MCP非依存）** | `data_loader.py`（ChromaDB＋BM25）、`search.py`（Hybrid＋融合＋rerank）、`models.py`/`settings.py`。datasetを正解として**検索単体評価を測りながら**、融合方式・rerank・言語戦略をチューニング。あわせて**ライブラリ直呼びで数問 end-to-end 採点**し、検索指標と裁定品質の相関を確認 | **must_cite recall@5 ≥ 0.8**（[EVALUATION.md](EVALUATION.md) の基準）／代理指標の相関確認済み |
-| **1.5. 生成層（裁定）の評価** | MCP化の前に**回答そのものの品質**を確立する。ライブラリ直呼びで全110問の裁定を生成し、`evaluation/test_runner.md` の手順で採点。**サマリ＋代表例のレポート**を `evaluation/reports/` に保存（人間が回答を確認できる形） | 各問スコア≥7/10・全体精度80%以上 → **達成（96.4%・平均9.30）**。LLM-judge較正（16問の人間採点との一致率）は **PR #4 レビュー時に実施**（2026-07-04 ユーザー決定により後日化。シート: `gen-eval/calibration.md`） |
+| **1.5. 生成層（裁定）の評価** | MCP化の前に**回答そのものの品質**を確立する。ライブラリ直呼びで全110問の裁定を生成し、`evaluation/test_runner.md` の手順で採点。**サマリ＋代表例のレポート**を `evaluation/reports/` に保存（人間が回答を確認できる形） | 各問スコア≥7/10・全体精度80%以上 → **達成（96.4%・平均9.30）**。LLM-judge較正（16問の人間採点）は **実施済**（2026-07-04：合否一致 87.5%・±1点一致 56.3%。分析は `evaluation/reports/generation-eval.md`。ルーブリック調整の要否はユーザー判断待ち） |
 | **2. MCP層＋Scryfall** | FastMCPサーバー＋3ツール＋lifespan、Scryfall asyncクライアント（レート制限・**利用規約の一次確認**）、Scryfall の**contract test**（記録済みfixture＋任意のlive実行マーク）、`.mcp.json` 登録、Claude Desktop接続 | `/mcp-smoke` 全PASS |
 | **3. 統合評価＋拡充** | MCP経由での統合評価（1.5 のライブラリ直呼び結果と比較し、MCP層で品質が落ちていないことを確認）、回帰検知の運用開始、datasetの拡充（必要に応じて。手薄なカテゴリの追補）、外部評価（任意） | 各問スコア≥7/10・全体精度80%以上（MCP経由） |
 | **4. 自動更新** | `rules_updater.py`（差分検出・段階更新、LLM不使用）、`check_updates.sh`（cron） | CR更新時に変更分のみ再インデックスされ、検索評価が劣化しない |
