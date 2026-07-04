@@ -29,6 +29,7 @@ _SECTION_RE = re.compile(r"^(\d{3})\.\s+(.+)$")
 _RULE_RE = re.compile(r"^(\d{3})\.(\d+[a-z]?)\.?\s+(.+)$")
 _GLOSSARY_TITLES = ("Glossary", "用語集")
 _RULE_REF_RE = re.compile(r"rule (\d{3}\.\d+[a-z]?)")
+_SECTION_REF_RE = re.compile(r"rule (\d{3})(?![.\d])")
 _JA_GLOSS_H5_RE = re.compile(r"<h5><a id=\"g_[^\"]*\">(.*?)</a></h5>", re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
 _READING_RE = re.compile(r"（[ぁ-ゖー・、\s]+）")
@@ -131,12 +132,20 @@ def extract_lines_from_html(html: str) -> list[str]:
     return extractor.lines
 
 
-def _referenced_rules(text: str) -> list[str]:
-    """定義文中の "rule NNN.N[x]" 参照を抽出する（セクションのみの参照は含めない）。"""
-    seen: dict[str, None] = {}
+def _referenced_rules(text: str) -> tuple[list[str], list[str]]:
+    """定義文中のルール参照を抽出する。
+
+    Returns:
+        (個別ルール番号のリスト（"702.111" 等）, セクション番号のリスト（"502" 等）)。
+        セクション参照（例「See rule 502, "Untap Step."」）は検索側で親ルール群に展開する。
+    """
+    rules: dict[str, None] = {}
     for number in _RULE_REF_RE.findall(text):
-        seen.setdefault(number, None)
-    return list(seen)
+        rules.setdefault(number, None)
+    sections: dict[str, None] = {}
+    for number in _SECTION_REF_RE.findall(text):
+        sections.setdefault(number, None)
+    return list(rules), list(sections)
 
 
 def parse_glossary_en(raw_text: str) -> list[GlossaryEntry]:
@@ -163,11 +172,13 @@ def parse_glossary_en(raw_text: str) -> list[GlossaryEntry]:
             continue
         if len(block) >= 2:
             definition = " ".join(block[1:])
+            rules, sections = _referenced_rules(definition)
             entries.append(
                 GlossaryEntry(
                     term_en=block[0],
                     definition_en=definition,
-                    rules=_referenced_rules(definition),
+                    rules=rules,
+                    sections=sections,
                 )
             )
         block = []
@@ -202,12 +213,14 @@ def parse_glossary_ja(html: str) -> list[GlossaryEntry]:
         else:
             term_ja, term_en = term_raw, term_raw
         term_ja = _READING_RE.sub("", term_ja).strip()
+        rules, sections = _referenced_rules(definition)
         entries.append(
             GlossaryEntry(
                 term_en=term_en.strip(),
                 term_ja=term_ja or None,
                 definition_ja=definition or None,
-                rules=_referenced_rules(definition),
+                rules=rules,
+                sections=sections,
             )
         )
     return entries
@@ -232,6 +245,9 @@ def merge_glossaries(
             for number in ja_entry.rules:
                 if number not in base.rules:
                     base.rules.append(number)
+            for section in ja_entry.sections:
+                if section not in base.sections:
+                    base.sections.append(section)
         else:
             merged[key] = ja_entry.model_copy()
     return list(merged.values())

@@ -37,6 +37,8 @@ _PARENT_RE = re.compile(r"^(\d{3}\.\d+)[a-z]$")
 
 # 融合前に各系統から取る候補数（融合・rerank後にグループ化して絞る）
 CANDIDATE_POOL = 50
+# 用語集セクション展開系統の融合重み（弱い補助。search.py の _hybrid 参照）
+GLOSSARY_SECTION_WEIGHT = 0.3
 
 
 def parent_of(number: str) -> str:
@@ -45,20 +47,27 @@ def parent_of(number: str) -> str:
     return match.group(1) if match else number
 
 
-def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = 60) -> dict[str, float]:
-    """Reciprocal Rank Fusion。複数のランキングを 1/(k+rank) の和で融合する（純粋関数）。
+def rrf_fuse(
+    rankings: Sequence[Sequence[str]],
+    k: int = 60,
+    weights: Sequence[float] | None = None,
+) -> dict[str, float]:
+    """Reciprocal Rank Fusion。複数のランキングを w/(k+rank) の和で融合する（純粋関数）。
 
     Args:
         rankings: 各検索系統のID列（順位順）。
         k: RRFの定数（標準60）。
+        weights: 系統ごとの重み（省略時は全て1.0。弱い補助系統に小さい値を与える）。
 
     Returns:
         ID→融合スコア（降順ソートは呼び出し側）。
     """
+    if weights is None:
+        weights = [1.0] * len(rankings)
     scores: dict[str, float] = {}
-    for ranking in rankings:
+    for ranking, weight in zip(rankings, weights, strict=True):
         for rank, doc_id in enumerate(ranking, start=1):
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+            scores[doc_id] = scores.get(doc_id, 0.0) + weight / (k + rank)
     return scores
 
 
@@ -191,10 +200,24 @@ class HybridSearcher:
             self._vector_ranking(query, section),
             self._bm25_ranking(query, section),
         ]
-        glossary_ranking = self._glossary_ranking(query, section)
+        weights = [1.0, 1.0]
+        glossary_ranking = self._glossary_ranking(
+            query, section, self._index.glossary_terms
+        )
         if glossary_ranking:
             rankings.append(glossary_ranking)
-        fused = rrf_fuse(rankings, k=self._rrf_k)
+            weights.append(1.0)
+        # セクション展開は「候補pool（rerank対象）に種を撒く」ための弱い補助系統。
+        # rerank無しだと top群を直接押し上げて全指標が悪化する（実測）ため、reranker がある
+        # 構成でのみ有効化する
+        if self._index.reranker is not None:
+            section_ranking = self._glossary_ranking(
+                query, section, self._index.glossary_section_terms
+            )
+            if section_ranking:
+                rankings.append(section_ranking)
+                weights.append(GLOSSARY_SECTION_WEIGHT)
+        fused = rrf_fuse(rankings, k=self._rrf_k, weights=weights)
         ranked = [n for n, _ in sorted(fused.items(), key=lambda item: -item[1])]
         scores = fused
         if self._index.reranker is not None and ranked:
@@ -232,15 +255,17 @@ class HybridSearcher:
             ]
         return [entry.number for entry, score in ranked[:CANDIDATE_POOL] if score > 0]
 
-    def _glossary_ranking(self, query: str, section: str | None) -> list[str]:
-        """クエリに含まれるMTG用語を用語集と照合し、定義ルール番号を返す（決定論）。
+    def _glossary_ranking(
+        self, query: str, section: str | None, terms: list[tuple[str, list[str]]]
+    ) -> list[str]:
+        """クエリに含まれるMTG用語を用語対応表と照合し、ルール番号を返す（決定論）。
 
         用語は長い順に照合する（「プレインズウォーカー越えトランプル」が「トランプル」より
         先に当たるように）。同じルール番号は最初の（=最も特異的な）用語の位置で採用。
         """
         query_lower = query.lower()
         ranking: list[str] = []
-        for term, rules in self._index.glossary_terms:
+        for term, rules in terms:
             if term not in query_lower:
                 continue
             for number in rules:

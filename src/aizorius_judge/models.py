@@ -54,7 +54,8 @@ class GlossaryEntry(BaseModel):
         term_ja: 日本語用語（例 "威迫"。読み仮名は除去済み）。
         definition_en: 英語定義文。
         definition_ja: 日本語定義文。
-        rules: 定義文中で参照されるルール番号（"702.111" 等。セクションのみの参照は除く）。
+        rules: 定義文中で参照される個別ルール番号（"702.111" 等）。
+        sections: 定義文中でセクション単位で参照される番号（例 "502"。検索側で親ルール群に展開する）。
     """
 
     term_en: str
@@ -62,6 +63,7 @@ class GlossaryEntry(BaseModel):
     definition_en: str = ""
     definition_ja: str | None = None
     rules: list[str] = []
+    sections: list[str] = []
 
 
 class CorpusEntry(BaseModel):

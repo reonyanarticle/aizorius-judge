@@ -151,33 +151,63 @@ class SearchIndex:
     embedder: EmbeddingModel
     reranker: Reranker | None
     glossary_terms: list[tuple[str, list[str]]]
+    glossary_section_terms: list[tuple[str, list[str]]]
+
+
+# セクション参照を展開する章の大きさ上限（親ルール数）。大きな章（113誘発型能力等）を
+# 汎用語から展開すると候補が洪水して全指標が悪化するため、小さな章（ステップ・スタック等）に限る
+GLOSSARY_SECTION_MAX_PARENTS = 8
 
 
 def load_glossary_terms(
     data_dir: Path, known_numbers: set[str]
-) -> list[tuple[str, list[str]]]:
-    """glossary.json から照合用語→ルール番号の対応表を作る。
+) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
+    """glossary.json から照合用語→ルール番号の対応表を2系統作る。
 
-    日本語用語・英語用語の両方を照合キーにする（英語は小文字化）。参照先が
-    コーパスに実在する番号だけを残し、用語の長い順に並べる。
+    日本語用語・英語用語の両方を照合キーにする（英語は小文字化）。用語の長い順に並べる。
+
+    Returns:
+        (explicit_terms, section_terms):
+        - explicit_terms: 定義文が個別番号で参照するルール（例 威迫→702.111）。融合で通常重み。
+        - section_terms: セクション参照（例 アンタップ・ステップ→rule 502）を章の**親ルール**
+          （レター無し番号）に展開したもの。小さな章（親 ≤ GLOSSARY_SECTION_MAX_PARENTS）に限る。
+          汎用語で候補が洪水しないよう、融合では**弱い重みの補助系統**として使う（search.py）。
     """
     path = data_dir / "glossary.json"
     if not path.exists():
         logger.warning(
             "%s が無いため用語集系統は無効（scripts/parse_rules.py で生成）", path
         )
-        return []
-    terms: list[tuple[str, list[str]]] = []
+        return [], []
+    parents_by_section: dict[str, list[str]] = {}
+    for number in sorted(known_numbers):
+        section, _, rest = number.partition(".")
+        if rest and rest.isdigit():  # レター無し＝親ルール
+            parents_by_section.setdefault(section, []).append(number)
+
+    explicit_terms: list[tuple[str, list[str]]] = []
+    section_terms: list[tuple[str, list[str]]] = []
     for entry in json.loads(path.read_text(encoding="utf-8")):
         rules = [n for n in entry["rules"] if n in known_numbers]
-        if not rules:
-            continue
+        section_rules: list[str] = []
+        for section in entry.get("sections", []):
+            parents = parents_by_section.get(section, [])
+            if len(parents) > GLOSSARY_SECTION_MAX_PARENTS:
+                continue
+            section_rules += [n for n in parents if n not in rules]
+        keys = []
         if entry.get("term_ja"):
-            terms.append((entry["term_ja"], rules))
+            keys.append(entry["term_ja"])
         if entry.get("term_en"):
-            terms.append((entry["term_en"].lower(), rules))
-    terms.sort(key=lambda pair: -len(pair[0]))
-    return terms
+            keys.append(entry["term_en"].lower())
+        for key in keys:
+            if rules:
+                explicit_terms.append((key, rules))
+            if section_rules:
+                section_terms.append((key, section_rules))
+    explicit_terms.sort(key=lambda pair: -len(pair[0]))
+    section_terms.sort(key=lambda pair: -len(pair[0]))
+    return explicit_terms, section_terms
 
 
 def _source_fingerprint(data_dir: Path, model_name: str) -> str:
@@ -250,6 +280,9 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
     )
     bm25 = BM25Okapi([tokenize(entry.embedding_text()) for entry in corpus])
     known_numbers = {entry.number for entry in corpus}
+    glossary_terms, glossary_section_terms = load_glossary_terms(
+        settings.data_dir, known_numbers
+    )
     return SearchIndex(
         corpus=corpus,
         by_number={entry.number: entry for entry in corpus},
@@ -257,5 +290,6 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         bm25=bm25,
         embedder=embedder,
         reranker=reranker,
-        glossary_terms=load_glossary_terms(settings.data_dir, known_numbers),
+        glossary_terms=glossary_terms,
+        glossary_section_terms=glossary_section_terms,
     )
