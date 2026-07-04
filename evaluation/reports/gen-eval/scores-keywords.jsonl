@@ -1,0 +1,16 @@
+{"id": "keywords-001", "score": 10, "rationale": "結論(ブロッカーへ1点で残りをトランプルで本体へ)がgoldenと完全一致。must_cite_rules(702.2c/702.19b)を過不足なく引用し、key_factsも網羅している。", "dataset_issue": null}
+{"id": "keywords-002", "score": 8, "rationale": "結論(破壊不能により接死ダメージでも破壊されない)は正しく、key_factsも実質網羅しているが、[生成起因] rules_citedにgoldenの必須引用702.2bが含まれず、代わりに704.5h/701.8bで説明を組み立てているため引用点を減点した。", "dataset_issue": null}
+{"id": "keywords-003", "score": 10, "rationale": "絆魂によるライフ獲得と接死による破壊が独立に両方起こるという結論・引用(702.15b/702.2b)・key_factsがgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-004", "score": 9, "rationale": "呪禁は対象化のみを防ぎ全体除去や生け贄の強要では守られないという結論・引用(702.11b)は正しいが、「対象を取らない書き方をされることが多い」「確定できない」とやや留保を付けており、goldenの断定的なkey_facts網羅としてはわずかに弱い。", "dataset_issue": null}
+{"id": "keywords-005", "score": 9, "rationale": "護法(誘発型・対象化は許すがコストを要求)と呪禁(常在型・対象化自体を禁止)の違いを正しく説明し、引用(702.21a)もgoldenと一致するが、護法の誘発が対象化した呪文より上に乗り先に解決する点への言及がなくkey_facts網羅がわずかに不完全。", "dataset_issue": null}
+{"id": "keywords-006", "score": 10, "rationale": "被覆は誰の呪文・能力の対象にもならない(自分の呪文でも対象化不可)のに対し呪禁は対戦相手の呪文・能力のみを防ぐという結論・引用・key_factsがgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-007", "score": 10, "rationale": "プロテクション(DEBT)の5要素と、対象を取らない効果・他色からの効果は防げない点までgoldenのkey_factsを網羅し、must_cite_rules(702.16e/702.16f)も含めて正確。", "dataset_issue": null}
+{"id": "keywords-008", "score": 8, "rationale": "格闘のダメージは戦闘ダメージでないが接死は適用され相手は破壊されるという結論は正しいが、[生成起因] rules_citedにgoldenの必須引用701.14aが含まれず701.14dで代替しているため引用点を減点した。", "dataset_issue": null}
+{"id": "keywords-009", "score": 10, "rationale": "先制攻撃側が第1戦闘ダメージ・ステップで致死ダメージを与えれば非先制側は破壊され反撃できないため必ずしも相互にダメージを与え合わないという結論・引用(702.7b)がgoldenと一致。", "dataset_issue": null}
+{"id": "keywords-010", "score": 10, "rationale": "二段攻撃は第1・第2の両戦闘ダメージ・ステップで割り振るため2回ダメージを与えるという結論・引用(702.4b)・key_factsがgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-011", "score": 10, "rationale": "到達を持つクリーチャーは飛行を持つ攻撃クリーチャーをブロックできるという結論・引用(702.9b/702.17b)がgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-012", "score": 10, "rationale": "威迫(2体以上)と飛行(飛行/到達持ちのみ)の両条件が同時に適用されるという結論・引用(702.111b/702.9b)がgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-013", "score": 10, "rationale": "速攻は召喚酔いを無視し攻撃・タップ/アンタップ絡みの起動型能力の起動の両方が可能という結論・引用(702.10b)がgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-014", "score": 9, "rationale": "防衛はブロックを制限せず通常通りブロックできるという結論・引用(702.3b)は正しいが、防衛が「静的能力」であることの明示がなくkey_facts網羅がわずかに不完全。", "dataset_issue": null}
+{"id": "keywords-015", "score": 10, "rationale": "キッカー・コストは呪文を唱える際に追加コストとして支払い、支払わない場合はキッカー限定の対象を選ばないという結論・引用(702.33a)・key_factsがgoldenと完全一致。", "dataset_issue": null}
+{"id": "keywords-016", "score": 10, "rationale": "破壊不能の間もダメージは記録され、破壊不能を失えば記録済みの致死ダメージにより状況起因処理で破壊されるという結論・引用(702.12b)・key_factsがgoldenと完全一致。", "dataset_issue": null}

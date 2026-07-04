@@ -224,3 +224,4 @@ CLAUDE.local.md
 data/raw/
 data/comprehensive_rules*.json
 data/glossary.json
+evaluation/reports/gen-eval/contexts.jsonl
