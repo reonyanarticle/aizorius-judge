@@ -59,7 +59,7 @@ sequenceDiagram
 
 | ツール | 引数 | 返り値 | 備考 |
 |--------|------|--------|------|
-| `search_rules` | `query: str`, `max_results: int = 5`, `section: str?` | 整形済みルールtext（**親ルール単位のグループ**。`max_results` はグループ数） | ルール番号直接指定も可（例 `"702.9b"`）。`section` で絞り込み |
+| `search_rules` | `query: str`, `max_results: int = 7`, `section: str?` | 整形済みルールtext（**親ルール単位のグループ**。`max_results` はグループ数） | ルール番号直接指定も可（例 `"702.9b"`）。`section` で絞り込み。既定7はグループ数感度の実測（§4）に基づく |
 | `lookup_card` | `card_name: str` | カード情報text | Scryfall fuzzy検索（`/cards/named`）。日英対応 |
 | `get_card_rulings` | `card_name: str` | 公式裁定リストtext | Scryfall `rulings_uri` から取得 |
 
@@ -85,6 +85,7 @@ sequenceDiagram
   | 高速・反復検索（2クエリ模擬） | 0.688 | 0.859 | 0.723 | 0.16s |
 
   既定は品質優先（rerankあり）。高速構成は rerank なしでも旧設計の品質構成を上回っており、レイテンシ重視の環境では十分実用になる。反復検索（クライアントの追加クエリ）が must_cite をさらに引き上げるため、ツール説明でクライアントに反復検索を促す（§6）。
+- **返却グループ数の既定は7**：グループ数感度の実測（品質構成・2クエリ模擬）は k=5: 0.740/0.914 → k=7: **0.791/0.936**（recall/must_cite）で、k=8 はほぼ頭打ち。k=7 でコンテキスト量と回収率のバランスがよい。
 
 ## 5. データソースとパイプライン
 

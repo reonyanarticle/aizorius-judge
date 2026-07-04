@@ -142,7 +142,7 @@ class HybridSearcher:
             self._corpus_by_parent.setdefault(parent_of(entry.number), []).append(entry)
 
     def search(
-        self, query: str, max_groups: int = 5, section: str | None = None
+        self, query: str, max_groups: int = 7, section: str | None = None
     ) -> list[RuleGroup]:
         """ルールを検索し、親ルール単位のグループで返す。
 

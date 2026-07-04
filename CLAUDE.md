@@ -36,7 +36,7 @@
 - **成果物は検証してから完了報告**：ファイルが開ける・仕様に合う・テストが通ることを確認する（「たぶん動く」で渡さない）。
 
 ## サブエージェント / skill / hook（モデルは作業の重さで使い分ける）
-- サブエージェント：`design-planner`（opus・コード禁止）＝設計・計画の立案。`dataset-curator`（opus・memory付き）＝golden datasetの作成・拡充と出典検証。`eval-runner`（sonnet・memory付き）＝統合評価の実行と回帰検知。`critical-reviewer`（opus）＝設計・計画・前提の批判的点検。コード差分の検証はユーザーレベルの `tech-lead-reviewer`。
+- サブエージェント：`design-planner`（opus・コード禁止）＝設計・計画の立案。`dataset-curator`（opus・memory付き）＝golden datasetの作成・拡充と出典検証。`eval-runner`（sonnet・memory付き）＝統合評価の実行と回帰検知。`critical-reviewer`（opus）＝設計・計画・前提の批判的点検。`rules-reviewer`（sonnet）＝コード差分の CLAUDE.md／`.claude/rules/` 準拠チェック（修正せず報告のみ）。
 - skill：`/test`（**haiku**・テスト実行と報告のみ）、`/qa`（**sonnet**・失敗を修正して通るまで）、`/commit`（**sonnet**・混入チェック込みの日本語コミット）、`/docs-check`（**sonnet**・docs規約リンター）、`/mcp-smoke`（sonnet・3ツールの実挙動をPASS/FAIL）、`/eval`（eval-runnerへ委譲）。
 - hook：`py-format.sh`（編集した`.py`をBlack+Ruff自動整形）／`stop-gate.sh`（未コミットの`.py`変更があるターン終了時に品質ゲートを回し、失敗ならblockして自己修正させる。2周目は素通し）。
 - 実装の区切りでは `/qa` → `/mcp-smoke` →（検索に触れたら）`/eval` →（docs/rulesに触れたら）`/docs-check` の順で自己検証してから完了報告する。

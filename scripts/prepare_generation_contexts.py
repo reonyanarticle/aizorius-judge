@@ -52,11 +52,11 @@ def main() -> int:
     with out_path.open("w", encoding="utf-8") as out:
         for question in questions:
             text = str(question["question"])
-            groups = {g.parent_number: g for g in searcher.search(text, max_groups=5)}
+            groups = {g.parent_number: g for g in searcher.search(text, max_groups=7)}
             secondary = derive_secondary_query(searcher, text)
             queries = [text] + ([secondary] if secondary else [])
             if secondary:
-                for group in searcher.search(secondary, max_groups=5):
+                for group in searcher.search(secondary, max_groups=7):
                     groups.setdefault(group.parent_number, group)
             record = {
                 "id": question["id"],
