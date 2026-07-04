@@ -54,10 +54,11 @@ def main() -> int:
         by_category[str(question["category"])].append(int(scores[qid]["score"]))  # type: ignore[arg-type]
 
     lines: list[str] = [
-        "# 生成層（裁定）評価レポート",
+        "# 生成層（裁定）評価レポート（サマリ＋代表例）",
         "",
         "全110問の裁定を検索結果のみを根拠に生成し、golden 基準で採点した結果（手順: evaluation/test_runner.md）。",
-        "**このファイルが「回答（裁定文）を確認する場所」**。",
+        "コミットするのは定量サマリと代表例まで（.claude/rules/documentation.md「評価成果物のコミット方針」）。",
+        "**全問の裁定文はローカルの `gen-eval/generation-eval-full.md`**（再現: test_runner.md の手順1〜4）。",
         "",
         f"- 合格（≥{PASS_SCORE}/10）: **{passed}/{len(all_scores)}問（{passed / len(all_scores):.1%}）**"
         f" / 平均 {statistics.mean(all_scores):.2f} / 中央値 {statistics.median(all_scores)}",
@@ -79,13 +80,13 @@ def main() -> int:
         lines.append(
             f"- **{qid}**（{score_record['score']}/10）: {score_record['rationale']}"
         )
-    lines.append("")
-    lines.append("## 全問の裁定")
-    for qid, question in questions.items():
+
+    def question_block(qid: str) -> list[str]:
+        question = questions[qid]
         answer = answers[qid]["answer"]  # type: ignore[index]
         score_record = scores[qid]
         verdict = "✅" if int(score_record["score"]) >= PASS_SCORE else "❌"  # type: ignore[arg-type]
-        lines += [
+        block = [
             "",
             f"### {qid} {verdict} {score_record['score']}/10",
             f"**Q:** {question['question']}",
@@ -101,11 +102,42 @@ def main() -> int:
             f"**採点根拠:** {score_record['rationale']}",
         ]
         if score_record.get("dataset_issue"):
-            lines.append(f"**dataset要修正候補:** {score_record['dataset_issue']}")
+            block.append(f"**dataset要修正候補:** {score_record['dataset_issue']}")
+        return block
+
+    # コミット版: 不合格の全詳細＋各カテゴリの代表合格例1問（先頭）だけを載せる
+    lines.append("")
+    lines.append("## 不合格の問の詳細")
+    fail_ids = [
+        qid
+        for qid in questions
+        if int(scores[qid]["score"]) < PASS_SCORE  # type: ignore[arg-type]
+    ]
+    for qid in fail_ids:
+        lines += question_block(qid)
+    lines.append("")
+    lines.append("## 代表的な合格例（カテゴリごとに1問）")
+    shown: set[str] = set()
+    for qid, question in questions.items():
+        category = str(question["category"])
+        if category in shown or qid in fail_ids:
+            continue
+        if int(scores[qid]["score"]) >= PASS_SCORE:  # type: ignore[arg-type]
+            lines += question_block(qid)
+            shown.add(category)
 
     out = REPO_ROOT / "evaluation" / "reports" / "generation-eval.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"report -> {out.relative_to(REPO_ROOT)}")
+
+    # 全文版（gitignore領域）: 全問の裁定
+    full_lines = [*lines[:2], "", "（全問版・コミット対象外）", "", "## 全問の裁定"]
+    for qid in questions:
+        full_lines += question_block(qid)
+    full_out = GEN_DIR / "generation-eval-full.md"
+    full_out.write_text("\n".join(full_lines) + "\n", encoding="utf-8")
+
+    print(f"report -> {out.relative_to(REPO_ROOT)}（サマリ＋代表例）")
+    print(f"full   -> {full_out.relative_to(REPO_ROOT)}（コミット対象外）")
     print(f"合格 {passed}/{len(all_scores)}（{passed / len(all_scores):.1%}）")
     return 0
 
