@@ -121,3 +121,106 @@ def test_recall_regression(searcher) -> None:
         metrics["must_cite_recall@5"] >= 0.75
     ), f"must_cite recall@5 回帰: {metrics['must_cite_recall@5']:.3f}"
     assert metrics["mrr"] >= 0.68, f"MRR 回帰: {metrics['mrr']:.3f}"
+
+
+# --- 番号直接引き・グループ化の純粋ロジック（重大バグの再発防止） ---
+
+from aizorius_judge.models import CorpusEntry  # noqa: E402
+from aizorius_judge.search import (  # noqa: E402
+    group_by_parent,
+    matches_number_prefix,
+    number_sort_key,
+    parent_of,
+)
+
+
+def test_matches_number_prefix_parent_boundary() -> None:
+    # "702.9" に 702.90〜702.99（別ルール）を混入させない（CR実データで再現したバグ）
+    assert matches_number_prefix("702.9", "702.9")
+    assert matches_number_prefix("702.9b", "702.9")
+    assert not matches_number_prefix("702.90", "702.9")
+    assert not matches_number_prefix("702.90a", "702.9")
+
+
+def test_matches_number_prefix_section_and_subrule() -> None:
+    assert matches_number_prefix("702.1", "702")  # セクション引きは "." 続きのみ
+    assert not matches_number_prefix("702.1", "70")
+    assert matches_number_prefix("702.9b", "702.9b")  # サブルール指定は完全一致のみ
+    assert not matches_number_prefix("702.9b", "702.9a")
+
+
+def test_number_sort_key_numeric_order() -> None:
+    numbers = ["702.10", "702.2", "702.2a", "702.1"]
+    assert sorted(numbers, key=number_sort_key) == [
+        "702.1",
+        "702.2",
+        "702.2a",
+        "702.10",
+    ]
+
+
+def test_parent_of() -> None:
+    assert parent_of("702.9b") == "702.9"
+    assert parent_of("702.9") == "702.9"
+    assert parent_of("704") == "704"
+
+
+def _entry(number: str) -> CorpusEntry:
+    return CorpusEntry(
+        number=number, text_en=f"text {number}", section="702", category="Fake"
+    )
+
+
+def test_group_by_parent_folds_siblings_and_caps_groups() -> None:
+    corpus_by_parent = {
+        "702.9": [_entry("702.9"), _entry("702.9a"), _entry("702.9b")],
+        "702.19": [_entry("702.19")],
+        "702.2": [_entry("702.2")],
+    }
+    ranked = ["702.9b", "702.19", "702.9a", "702.2"]
+    scores = {n: 1.0 / (i + 1) for i, n in enumerate(ranked)}
+    groups = group_by_parent(ranked, scores, corpus_by_parent, max_groups=2)
+    assert [g.parent_number for g in groups] == [
+        "702.9",
+        "702.19",
+    ]  # 上限2で702.2は落ちる
+    assert groups[0].matched == ["702.9b", "702.9a"]  # 兄弟ヒットは同グループに畳む
+    assert [r.number for r in groups[0].rules] == ["702.9", "702.9a", "702.9b"]
+
+
+def test_group_by_parent_missing_parent_does_not_consume_slot() -> None:
+    # corpus に親が無い番号はグループにならず、max_groups の枠も消費しない
+    corpus_by_parent = {"702.2": [_entry("702.2")]}
+    groups = group_by_parent(
+        ["999.9", "702.2"], {"999.9": 1.0, "702.2": 0.5}, corpus_by_parent, max_groups=1
+    )
+    assert [g.parent_number for g in groups] == ["702.2"]
+
+
+@pytest.mark.local_index
+def test_direct_lookup_does_not_leak_neighbor_numbers(searcher) -> None:
+    # 実CRには 702.90〜702.99 が存在するが、"702.9"（飛行）の直接引きに混ぜない
+    groups = searcher.search("702.9")
+    assert groups[0].parent_number == "702.9"
+    assert all(g.parent_number == "702.9" for g in groups)
+
+
+def test_tokenize_normalizes_fullwidth() -> None:
+    # 日本語の罠: 全角英数字・全角ピリオドでもルール番号トークンを拾う
+    tokens = tokenize("７０２．９ｂ　を教えて")
+    assert "702.9b" in tokens
+
+
+@pytest.mark.local_index
+def test_direct_lookup_accepts_fullwidth_number(searcher) -> None:
+    groups = searcher.search("７０２．９")
+    assert groups and groups[0].parent_number == "702.9"
+
+
+@pytest.mark.local_index
+def test_glossary_matching_accepts_fullwidth_term(searcher) -> None:
+    # 用語集照合はNFKC正規化済みキーと突き合わせる（全角英字の "Ｍｅｎａｃｅ" でも当たる）
+    ranking = searcher._glossary_ranking(
+        "Ｍｅｎａｃｅ の意味", None, searcher._index.glossary_terms
+    )
+    assert any(n.startswith("702.111") for n in ranking)

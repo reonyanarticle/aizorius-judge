@@ -27,6 +27,7 @@ MAX_RULE_CHARS = 600
 
 
 def render_group(group: RuleGroup) -> dict[str, object]:
+    """RuleGroup を生成エージェント向けのJSON構造に整形する（本文はMAX_RULE_CHARSで切る）。"""
     return {
         "parent": group.parent_number,
         "category": group.category,
@@ -42,6 +43,7 @@ def render_group(group: RuleGroup) -> dict[str, object]:
 
 
 def main() -> int:
+    """dataset全問の検索コンテキストを gen-eval/contexts.jsonl に書き出す。"""
     logging.basicConfig(level=logging.WARNING)
     searcher = HybridSearcher(build_or_load_index(Settings()))
     questions = load_questions()

@@ -96,3 +96,102 @@ def test_html_extraction_and_parse() -> None:
     # インラインリンクのテキストは本文に残る
     assert "用語" in rules[0].text
     assert all("架空の用語" not in rule.text for rule in rules)
+
+
+# --- 用語集パーサ（重大バグの再発防止: 参照抽出の複数形・レター範囲・列挙） ---
+
+from aizorius_judge.rules_parser import (  # noqa: E402
+    _referenced_rules,
+    merge_glossaries,
+    parse_glossary_en,
+    parse_glossary_ja,
+)
+
+
+def test_referenced_rules_singular() -> None:
+    rules, sections = _referenced_rules("See rule 702.9b.")
+    assert rules == ["702.9b"]
+    assert sections == []
+
+
+def test_referenced_rules_plural_letter_range() -> None:
+    # "rules 509.1b–c" 形式（複数形＋enダッシュ範囲）を各サブルールに展開する
+    rules, _ = _referenced_rules("See rules 509.1b–c.")
+    assert rules == ["509.1b", "509.1c"]
+
+
+def test_referenced_rules_range_skips_l_and_o() -> None:
+    # CRはサブルールのレターに l/o を使わない（1/0との混同回避）
+    rules, _ = _referenced_rules("See rules 111.10k–m.")
+    assert rules == ["111.10k", "111.10m"]
+
+
+def test_referenced_rules_enumeration() -> None:
+    # "rules 613.2, 707.2, and 707.3" の列挙をすべて拾う
+    rules, _ = _referenced_rules("See rules 613.2, 707.2, and 707.3.")
+    assert rules == ["613.2", "707.2", "707.3"]
+
+
+def test_referenced_rules_section() -> None:
+    _, sections = _referenced_rules('See rule 502, "Untap Step." Also rules 510.')
+    assert sections == ["502", "510"]
+
+
+SYNTHETIC_GLOSSARY_EN = """\
+Fake Rules Document
+
+Contents
+
+Glossary
+
+Credits
+
+100. General
+
+100.1. A fake rule.
+
+Glossary
+
+Alpha Term
+A term defined by rules 509.1b–c.
+
+Beta Term
+See rule 100.1.
+
+Credits
+
+Fake credits line.
+"""
+
+
+def test_parse_glossary_en_blocks_and_refs() -> None:
+    entries = parse_glossary_en(SYNTHETIC_GLOSSARY_EN)
+    assert [e.term_en for e in entries] == ["Alpha Term", "Beta Term"]
+    assert entries[0].rules == ["509.1b", "509.1c"]
+    assert entries[1].rules == ["100.1"]
+
+
+SYNTHETIC_GLOSSARY_JA = (
+    '<h5><a id="g_alpha">アルファ用語（あるふぁようご）／Alpha Term</a></h5>'
+    "<p>rule 200.1 を参照。</p>"
+    '<h5><a id="g_gamma">ガンマ用語（がんまようご）／Gamma Term</a></h5>'
+    "<p>日本語側にしかない用語。</p></div>"
+)
+
+
+def test_parse_glossary_ja_terms_and_reading_removed() -> None:
+    entries = parse_glossary_ja(SYNTHETIC_GLOSSARY_JA)
+    assert [e.term_en for e in entries] == ["Alpha Term", "Gamma Term"]
+    assert entries[0].term_ja == "アルファ用語"  # 読み（…）は除去される
+    assert entries[0].rules == ["200.1"]
+
+
+def test_merge_glossaries_en_is_authoritative_ja_supplements() -> None:
+    en = parse_glossary_en(SYNTHETIC_GLOSSARY_EN)
+    ja = parse_glossary_ja(SYNTHETIC_GLOSSARY_JA)
+    merged = merge_glossaries(en, ja)
+    by_en = {e.term_en: e for e in merged}
+    alpha = by_en["Alpha Term"]
+    assert alpha.term_ja == "アルファ用語"
+    assert set(alpha.rules) == {"509.1b", "509.1c", "200.1"}  # 日英の参照が合流する
+    assert "Gamma Term" in by_en  # 日本語側にしかない用語も残る

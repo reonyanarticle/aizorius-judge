@@ -28,8 +28,13 @@ __all__ = [
 _SECTION_RE = re.compile(r"^(\d{3})\.\s+(.+)$")
 _RULE_RE = re.compile(r"^(\d{3})\.(\d+[a-z]?)\.?\s+(.+)$")
 _GLOSSARY_TITLES = ("Glossary", "用語集")
-_RULE_REF_RE = re.compile(r"rule (\d{3}\.\d+[a-z]?)")
-_SECTION_REF_RE = re.compile(r"rule (\d{3})(?![.\d])")
+# 個別ルール参照。CRの定義文は "rule 702.9b" のほか "rules 509.1b–c"（複数形＋レター範囲）
+# や "rules 613.2, 707.2, and 707.3"（列挙）を多用するため、"rule" 直後だけでなく
+# 番号トークン全般を拾う（###.# 形式は定義文中でルール参照以外に現れない。
+# 実在しない番号は data_loader.load_glossary_terms が known_numbers で除外する）。
+_RULE_REF_RE = re.compile(r"(\d{3}\.\d+)([a-z])?(?:\s*[–—-]\s*([a-z]))?")
+# 個別ルール（"510.2"）は除外しつつ、文末ピリオド（"rules 510."）は受け付ける
+_SECTION_REF_RE = re.compile(r"rules? (\d{3})(?!\.\d|\d)")
 _JA_GLOSS_H5_RE = re.compile(r"<h5><a id=\"g_[^\"]*\">(.*?)</a></h5>", re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
 _READING_RE = re.compile(r"（[ぁ-ゖー・、\s]+）")
@@ -78,7 +83,10 @@ def parse_rules_lines(lines: Sequence[str]) -> list[RuleEntry]:
 class _ParagraphExtractor(HTMLParser):
     """HTMLから段落・見出し単位のテキスト行を抽出する（mtg-jp.comの総合ルールページ用）。"""
 
-    _BLOCK_TAGS = frozenset({"p", "h1", "h2", "h3", "h4", "h5", "h6", "li"})
+    # div/br もブロック境界として扱う——サイト構造の変更で <div> 直下や <br> 区切りに
+    # 変わった場合に複数ルールが1行にマージされて丸ごと未パースになるのを防ぐ
+    _BLOCK_TAGS = frozenset({"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "div"})
+    _SELF_CLOSING_BREAKS = frozenset({"br"})
     _SKIP_TAGS = frozenset({"script", "style"})
 
     def __init__(self) -> None:
@@ -91,6 +99,8 @@ class _ParagraphExtractor(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._SKIP_TAGS:
             self._skip_depth += 1
+        elif tag in self._SELF_CLOSING_BREAKS:
+            self._flush()
         elif tag in self._BLOCK_TAGS:
             self._flush()
             self._in_block = True
@@ -137,11 +147,21 @@ def _referenced_rules(text: str) -> tuple[list[str], list[str]]:
 
     Returns:
         (個別ルール番号のリスト（"702.111" 等）, セクション番号のリスト（"502" 等）)。
-        セクション参照（例「See rule 502, "Untap Step."」）は検索側で親ルール群に展開する。
+        レター範囲（"509.1b–c"）は各サブルールに展開する。セクション参照
+        （例「See rule 502, "Untap Step."」）は検索側で親ルール群に展開する。
     """
     rules: dict[str, None] = {}
-    for number in _RULE_REF_RE.findall(text):
-        rules.setdefault(number, None)
+    for base, letter, range_end in _RULE_REF_RE.findall(text):
+        if not letter:
+            rules.setdefault(base, None)
+            continue
+        end = range_end if range_end and range_end >= letter else letter
+        for code in range(ord(letter), ord(end) + 1):
+            if (
+                chr(code) in "lo"
+            ):  # CRはサブルールのレターに l/o を使わない（1/0との混同回避）
+                continue
+            rules.setdefault(f"{base}{chr(code)}", None)
     sections: dict[str, None] = {}
     for number in _SECTION_REF_RE.findall(text):
         sections.setdefault(number, None)

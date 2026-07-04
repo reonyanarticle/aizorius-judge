@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from aizorius_judge.data_loader import build_or_load_index
+from aizorius_judge.data_loader import build_or_load_index, normalize_text
 from aizorius_judge.search import HybridSearcher
 from aizorius_judge.settings import Settings
 
@@ -39,10 +39,8 @@ def derive_secondary_query(searcher: HybridSearcher, question: str) -> str | Non
     実運用ではクライアントLLMが角度を変えたクエリを発行する。その最小近似として、
     質問に含まれる用語集用語（特異的な長い用語から最大4語）を連ねたクエリを返す。
     """
-    question_lower = question.lower()
-    terms = [
-        term for term, _ in searcher._index.glossary_terms if term in question_lower
-    ][:4]
+    question_lower = normalize_text(question)
+    terms = [term for term, _ in searcher.glossary_terms if term in question_lower][:4]
     return " ".join(terms) if terms else None
 
 

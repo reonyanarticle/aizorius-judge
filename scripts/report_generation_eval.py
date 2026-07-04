@@ -20,6 +20,7 @@ PASS_SCORE = 7
 
 
 def load_jsonl_glob(pattern: str) -> dict[str, dict[str, object]]:
+    """globに合致するJSONLを読み、id→レコードの辞書に統合する（後勝ち）。"""
     records: dict[str, dict[str, object]] = {}
     for path in sorted(GEN_DIR.glob(pattern)):
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -30,6 +31,7 @@ def load_jsonl_glob(pattern: str) -> dict[str, dict[str, object]]:
 
 
 def main() -> int:
+    """採点結果を集計し、コミット用サマリとローカル全文レポートを書き出す。"""
     questions = {
         str(q["id"]): q
         for q in map(

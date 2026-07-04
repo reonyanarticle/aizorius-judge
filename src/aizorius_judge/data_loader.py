@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 import chromadb
 import numpy as np
+from chromadb.api import ClientAPI
 from numpy.typing import NDArray
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
@@ -31,6 +33,7 @@ __all__ = [
     "SearchIndex",
     "build_or_load_index",
     "load_corpus",
+    "normalize_text",
     "tokenize",
 ]
 
@@ -40,11 +43,21 @@ _TOKEN_RE = re.compile(r"\d{3}\.\d+[a-z]?|\d+[a-z]?|[a-zA-Z][a-zA-Z']*")
 _CJK_RE = re.compile(r"[぀-ヿ㐀-鿿]+")
 
 
+def normalize_text(text: str) -> str:
+    """照合用の正規化（NFKC＋小文字化）。
+
+    日本語クエリの全角半角ゆれ（"７０２．９ｂ"・全角英字・全角スペース）を吸収する。
+    BM25のトークン化と用語集照合の両方で同じ正規化を使う（片側だけだと照合が割れる）。
+    """
+    return unicodedata.normalize("NFKC", text).lower()
+
+
 def tokenize(text: str) -> list[str]:
     """BM25用トークナイザ（形態素解析器に依存しない決定論的処理）。
 
     英数字は単語単位（ルール番号 "702.9b" は1トークンで保持）、日本語（かな・漢字）は
     文字バイグラムに分解する。日英併記テキストと日本語クエリの両方に同じ関数を使う。
+    全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も "702.9b" として拾う）。
 
     Args:
         text: 対象テキスト。
@@ -52,7 +65,7 @@ def tokenize(text: str) -> list[str]:
     Returns:
         トークンのリスト。
     """
-    lowered = text.lower()
+    lowered = normalize_text(text)
     tokens = _TOKEN_RE.findall(lowered)
     for chunk in _CJK_RE.findall(lowered):
         if len(chunk) == 1:
@@ -197,9 +210,9 @@ def load_glossary_terms(
             section_rules += [n for n in parents if n not in rules]
         keys = []
         if entry.get("term_ja"):
-            keys.append(entry["term_ja"])
+            keys.append(normalize_text(entry["term_ja"]))
         if entry.get("term_en"):
-            keys.append(entry["term_en"].lower())
+            keys.append(normalize_text(entry["term_en"]))
         for key in keys:
             if rules:
                 explicit_terms.append((key, rules))
@@ -217,6 +230,72 @@ def _source_fingerprint(data_dir: Path, model_name: str) -> str:
     return f"{hashes}+{model_name}"
 
 
+def _get_existing_collection(client: ClientAPI) -> chromadb.Collection | None:
+    """既存コレクションを取得する（無ければ None）。
+
+    「無い」以外の例外（DB破損・権限等）は握りつぶさず伝播させる——黙って再構築に
+    倒すと障害が見えなくなるため。NotFoundError の型は chromadb のバージョンで揺れる
+    ので、例外名で判定する。
+    """
+    try:
+        return client.get_collection(COLLECTION_NAME)
+    except Exception as error:
+        if "notfound" in type(error).__name__.lower() or "does not exist" in str(error):
+            return None
+        raise
+
+
+def _is_reusable(
+    collection: chromadb.Collection | None, fingerprint: str, expected_count: int
+) -> bool:
+    """既存コレクションを再利用できるか（指紋＝CR版＋モデルと件数の一致）。"""
+    return (
+        collection is not None
+        and (collection.metadata or {}).get("fingerprint") == fingerprint
+        and collection.count() == expected_count
+    )
+
+
+def _build_collection(
+    data_dir: Path,
+    corpus: list[CorpusEntry],
+    embedder: EmbeddingModel,
+    fingerprint: str,
+    had_existing: bool,
+) -> chromadb.Collection:
+    """言語別ベクトル（number#en / number#ja）で ChromaDB コレクションを構築する。"""
+    client = chromadb.PersistentClient(path=str(data_dir / "chromadb"))
+    if had_existing:
+        client.delete_collection(COLLECTION_NAME)
+        # delete直後の同名createはハンドルが無効化されることがあるためクライアントを作り直す
+        client = chromadb.PersistentClient(path=str(data_dir / "chromadb"))
+    collection = client.create_collection(
+        COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine", "fingerprint": fingerprint},
+    )
+    ids: list[str] = []
+    texts: list[str] = []
+    metadatas: list[dict[str, str]] = []
+    for entry in corpus:
+        ids.append(f"{entry.number}#en")
+        texts.append(f"{entry.number} {entry.text_en}")
+        metadatas.append({"number": entry.number, "section": entry.section})
+        if entry.text_ja:
+            ids.append(f"{entry.number}#ja")
+            texts.append(f"{entry.number} {entry.text_ja}")
+            metadatas.append({"number": entry.number, "section": entry.section})
+    embeddings = embedder.encode_passages(texts)
+    batch = 500
+    for start in range(0, len(ids), batch):
+        collection.add(
+            ids=ids[start : start + batch],
+            embeddings=embeddings[start : start + batch],
+            metadatas=metadatas[start : start + batch],  # type: ignore[arg-type]
+        )
+    logger.info("ChromaDB 構築完了: %d vectors", collection.count())
+    return collection
+
+
 def build_or_load_index(settings: Settings) -> SearchIndex:
     """ChromaDBインデックスを構築（または既存を再利用）し、BM25とともに返す。
 
@@ -228,50 +307,18 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
     fingerprint = _source_fingerprint(settings.data_dir, embedder.model_name) + "+dual"
 
     client = chromadb.PersistentClient(path=str(settings.data_dir / "chromadb"))
-    try:
-        existing_collection = client.get_collection(COLLECTION_NAME)
-    except Exception:  # NotFoundError（chromadbのバージョンで型が揺れるため広く受ける）
-        existing_collection = None
+    existing = _get_existing_collection(client)
     # 言語別ベクトル（en/ja 各1エントリ。番号は metadata の number で引く）
     expected_count = sum(2 if entry.text_ja else 1 for entry in corpus)
-    is_fresh = (
-        existing_collection is not None
-        and (existing_collection.metadata or {}).get("fingerprint") == fingerprint
-        and existing_collection.count() == expected_count
-    )
-    if is_fresh and existing_collection is not None:
-        collection = existing_collection
+    if _is_reusable(existing, fingerprint, expected_count):
+        collection = existing
+        assert collection is not None  # _is_reusable が None を除外済み
         logger.info("既存インデックスを再利用: %d vectors", collection.count())
     else:
         logger.info("インデックスを再構築する（ベクトル数=%d）", expected_count)
-        if existing_collection is not None:
-            client.delete_collection(COLLECTION_NAME)
-            # delete直後の同名createはハンドルが無効化されることがあるためクライアントを作り直す
-            client = chromadb.PersistentClient(path=str(settings.data_dir / "chromadb"))
-        collection = client.create_collection(
-            COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine", "fingerprint": fingerprint},
+        collection = _build_collection(
+            settings.data_dir, corpus, embedder, fingerprint, existing is not None
         )
-        ids: list[str] = []
-        texts: list[str] = []
-        metadatas: list[dict[str, str]] = []
-        for entry in corpus:
-            ids.append(f"{entry.number}#en")
-            texts.append(f"{entry.number} {entry.text_en}")
-            metadatas.append({"number": entry.number, "section": entry.section})
-            if entry.text_ja:
-                ids.append(f"{entry.number}#ja")
-                texts.append(f"{entry.number} {entry.text_ja}")
-                metadatas.append({"number": entry.number, "section": entry.section})
-        embeddings = embedder.encode_passages(texts)
-        batch = 500
-        for start in range(0, len(ids), batch):
-            collection.add(
-                ids=ids[start : start + batch],
-                embeddings=embeddings[start : start + batch],
-                metadatas=metadatas[start : start + batch],  # type: ignore[arg-type]
-            )
-        logger.info("ChromaDB 構築完了: %d vectors", collection.count())
 
     reranker = (
         Reranker(settings.reranker_model, embedder.device)
