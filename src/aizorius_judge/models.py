@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 __all__ = [
     "Card",
+    "CardNamePair",
     "CardRuling",
     "CorpusEntry",
     "DatasetQuestion",
@@ -153,6 +154,18 @@ class EvaluationCriteria(BaseModel):
     forbidden_mistakes: list[str] = Field(min_length=1)
 
 
+class CardNamePair(BaseModel):
+    """設問が参照するカード名の日英ペア（card_interactions カテゴリで使用）。
+
+    Attributes:
+        ja: 日本語カード名（例 "血染めの月"）。
+        en: 英語カード名（例 "Blood Moon"。Scryfall照合のキー）。
+    """
+
+    ja: str = Field(min_length=1)
+    en: str = Field(min_length=1)
+
+
 class DatasetQuestion(BaseModel):
     """評価データセット（evaluation/dataset.json）の1問。
 
@@ -160,6 +173,7 @@ class DatasetQuestion(BaseModel):
         id: 一意ID（例 "commander-007"）。
         category: docs/EVALUATION.md §3 のカテゴリ。
         question: ルール質問（日本語）。
+        cards: 設問が参照するカード名の日英ペア（任意。lookup_card 入力を機械可読にする）。
         expected_tools: 期待されるツール呼び出し。
         expected_answer: 期待回答（結論・引用ルール・重要事実）。
         retrieval_relevant_rules: 検索が返すべきルール番号の完全集合（recall@kの正解）。
@@ -171,6 +185,7 @@ class DatasetQuestion(BaseModel):
     id: str = Field(min_length=1)
     category: str = Field(min_length=1)
     question: str = Field(min_length=1)
+    cards: list[CardNamePair] | None = None
     expected_tools: list[str] = Field(min_length=1)
     expected_answer: ExpectedAnswer
     retrieval_relevant_rules: list[str] = Field(min_length=1)

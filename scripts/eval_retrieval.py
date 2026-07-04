@@ -54,8 +54,11 @@ def evaluate(
     返却単位はルールグループ（親＋サブルール）なので、k は「グループ数」。
     取得集合はグループに含まれる全ルール番号、MRR は最初に正解を含むグループの順位で測る。
     multi=True で反復検索（2クエリ・union）を模擬する（セッション回収力の評価）。
+
+    card_interactions カテゴリは lookup_card が主役の問のため、検索単体の母集団から
+    除外する（docs/EVALUATION.md §3。混ぜると recall 指標が歪む）。
     """
-    questions = load_questions()
+    questions = [q for q in load_questions() if q["category"] != "card_interactions"]
     recalls: list[float] = []
     must_recalls: list[float] = []
     reciprocal_ranks: list[float] = []

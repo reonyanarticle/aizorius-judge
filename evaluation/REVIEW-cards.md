@@ -92,10 +92,19 @@
 - **013 倍増の季節**: 606.5 は「忠誠度能力の総コスト」に関する条文で、「コストで置く忠誠度は
   倍増しない」を直接述べてはいない。コスト≠効果ゆえ 614.1 が及ばない、という導出。
 
-## 5. 承認後にやること（本候補では未実施）
+## 5. 承認後にやること（承認を受けて実施済み・2026-07-04）
 
-1. 承認された問を `evaluation/dataset.jsonl` へ追記（本体は現状未変更）。
-2. `docs/EVALUATION.md` §3 スキーマ表に `cards`（任意）を追記し、§3 カテゴリ配分表に
-   `card_interactions` を追加（除外方針も明記）。
-3. `tests/test_search.py` の recall@5 母集団から `category == "card_interactions"` を除外
-   （または別指標として分離）。
+1. ✅ 15問を `evaluation/dataset.jsonl` へ追記（計125問・`validate_dataset.py` PASS）。候補ファイルは削除。
+2. ✅ `docs/EVALUATION.md` §3 スキーマ表に `cards`（任意）を追記、カテゴリ配分表に
+   `card_interactions` を追加（検索単体評価からの除外方針も明記）。`models.DatasetQuestion` に
+   `cards: list[CardNamePair] | None` を追加。
+3. ✅ 検索単体評価の母集団から `category == "card_interactions"` を除外
+   （`scripts/eval_retrieval.py` の `evaluate()`。`tests/test_search.py` の回帰ゲートは同関数経由）。
+
+## 承認記録
+
+- [x] card_interactions 15問を承認する
+- 承認者: reonyanarticle（ユーザー本人）
+- 日付: 2026-07-04
+- 特記事項: §4 の要確認3問（010/004/013）を含めて承認。以後の修正は本体 dataset と同じ
+  「IDを指摘 → 再調査・検証 → 修正」の運用（[REVIEW.md](REVIEW.md)）で行う。
