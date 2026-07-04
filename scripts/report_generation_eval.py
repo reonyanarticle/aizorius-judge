@@ -22,7 +22,10 @@ PASS_SCORE = 7
 def load_jsonl_glob(pattern: str) -> dict[str, dict[str, object]]:
     """globに合致するJSONLを読み、id→レコードの辞書に統合する（後勝ち）。"""
     records: dict[str, dict[str, object]] = {}
-    for path in sorted(GEN_DIR.glob(pattern)):
+    # retry系ファイルは再評価の上書きなので、名前順でなく**最後**に読む（後勝ち）
+    for path in sorted(
+        GEN_DIR.glob(pattern), key=lambda p: ("retry" in p.name, p.name)
+    ):
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 record = json.loads(line)
@@ -31,7 +34,12 @@ def load_jsonl_glob(pattern: str) -> dict[str, dict[str, object]]:
 
 
 def main() -> int:
-    """採点結果を集計し、コミット用サマリとローカル全文レポートを書き出す。"""
+    """採点結果を集計し、コミット用サマリとローカル全文レポートを書き出す。
+
+    --full-only: gitignore領域の全文版（generation-eval-full.md）だけを再生成する。
+    コミット版サマリに手動の分析節（較正・原因分析等）を足した後の再集計で使う。
+    """
+    full_only = "--full-only" in sys.argv[1:]
     questions = {
         str(q["id"]): q
         for q in map(
@@ -40,6 +48,10 @@ def main() -> int:
             .read_text(encoding="utf-8")
             .splitlines(),
         )
+    }
+    # card_interactions は lookup_card が主役でMCP経由の統合評価の対象（docs/EVALUATION.md §3）
+    questions = {
+        qid: q for qid, q in questions.items() if q["category"] != "card_interactions"
     }
     answers = load_jsonl_glob("answers-*.jsonl")
     scores = load_jsonl_glob("scores-*.jsonl")
@@ -128,8 +140,10 @@ def main() -> int:
             lines += question_block(qid)
             shown.add(category)
 
-    out = REPO_ROOT / "evaluation" / "reports" / "generation-eval.md"
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if not full_only:
+        out = REPO_ROOT / "evaluation" / "reports" / "generation-eval.md"
+        out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"report -> {out.relative_to(REPO_ROOT)}（サマリ＋代表例）")
 
     # 全文版（gitignore領域）: 全問の裁定
     full_lines = [*lines[:2], "", "（全問版・コミット対象外）", "", "## 全問の裁定"]
@@ -137,8 +151,6 @@ def main() -> int:
         full_lines += question_block(qid)
     full_out = GEN_DIR / "generation-eval-full.md"
     full_out.write_text("\n".join(full_lines) + "\n", encoding="utf-8")
-
-    print(f"report -> {out.relative_to(REPO_ROOT)}（サマリ＋代表例）")
     print(f"full   -> {full_out.relative_to(REPO_ROOT)}（コミット対象外）")
     print(f"合格 {passed}/{len(all_scores)}（{passed / len(all_scores):.1%}）")
     return 0
