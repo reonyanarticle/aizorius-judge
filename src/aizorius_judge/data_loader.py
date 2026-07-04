@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 import chromadb
 import numpy as np
+from chromadb.api import ClientAPI
 from numpy.typing import NDArray
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
@@ -31,6 +33,7 @@ __all__ = [
     "SearchIndex",
     "build_or_load_index",
     "load_corpus",
+    "normalize_text",
     "tokenize",
 ]
 
@@ -40,11 +43,21 @@ _TOKEN_RE = re.compile(r"\d{3}\.\d+[a-z]?|\d+[a-z]?|[a-zA-Z][a-zA-Z']*")
 _CJK_RE = re.compile(r"[぀-ヿ㐀-鿿]+")
 
 
+def normalize_text(text: str) -> str:
+    """照合用の正規化（NFKC＋小文字化）。
+
+    日本語クエリの全角半角ゆれ（"７０２．９ｂ"・全角英字・全角スペース）を吸収する。
+    BM25のトークン化と用語集照合の両方で同じ正規化を使う（片側だけだと照合が割れる）。
+    """
+    return unicodedata.normalize("NFKC", text).lower()
+
+
 def tokenize(text: str) -> list[str]:
     """BM25用トークナイザ（形態素解析器に依存しない決定論的処理）。
 
     英数字は単語単位（ルール番号 "702.9b" は1トークンで保持）、日本語（かな・漢字）は
     文字バイグラムに分解する。日英併記テキストと日本語クエリの両方に同じ関数を使う。
+    全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も "702.9b" として拾う）。
 
     Args:
         text: 対象テキスト。
@@ -52,7 +65,7 @@ def tokenize(text: str) -> list[str]:
     Returns:
         トークンのリスト。
     """
-    lowered = text.lower()
+    lowered = normalize_text(text)
     tokens = _TOKEN_RE.findall(lowered)
     for chunk in _CJK_RE.findall(lowered):
         if len(chunk) == 1:
@@ -151,33 +164,74 @@ class SearchIndex:
     embedder: EmbeddingModel
     reranker: Reranker | None
     glossary_terms: list[tuple[str, list[str]]]
+    glossary_section_terms: list[tuple[str, list[str]]]
+
+
+# セクション参照を展開する章の大きさ上限（親ルール数）。大きな章（113誘発型能力等）を
+# 汎用語から展開すると候補が洪水して全指標が悪化するため、小さな章（ステップ・スタック等）に限る
+GLOSSARY_SECTION_MAX_PARENTS = 8
+# 大きな章のセクション参照を「章の先頭K親」（定義・動作原理が並ぶ）に絞って展開する既定値。
+# 全スキップ比で recall@7 0.746→0.752 / must_cite@7 0.895→0.905・劣化なし（2026-07-04 計測）
+GLOSSARY_LARGE_SECTION_HEAD = 8
 
 
 def load_glossary_terms(
-    data_dir: Path, known_numbers: set[str]
-) -> list[tuple[str, list[str]]]:
-    """glossary.json から照合用語→ルール番号の対応表を作る。
+    data_dir: Path, known_numbers: set[str], large_section_head: int = 0
+) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
+    """glossary.json から照合用語→ルール番号の対応表を2系統作る。
 
-    日本語用語・英語用語の両方を照合キーにする（英語は小文字化）。参照先が
-    コーパスに実在する番号だけを残し、用語の長い順に並べる。
+    日本語用語・英語用語の両方を照合キーにする（英語は小文字化）。用語の長い順に並べる。
+
+    Returns:
+        (explicit_terms, section_terms):
+        - explicit_terms: 定義文が個別番号で参照するルール（例 威迫→702.111）。融合で通常重み。
+        - section_terms: セクション参照（例 アンタップ・ステップ→rule 502）を章の**親ルール**
+          （レター無し番号）に展開したもの。小さな章（親 ≤ GLOSSARY_SECTION_MAX_PARENTS）に限る。
+          汎用語で候補が洪水しないよう、融合では**弱い重みの補助系統**として使う（search.py）。
     """
     path = data_dir / "glossary.json"
     if not path.exists():
         logger.warning(
             "%s が無いため用語集系統は無効（scripts/parse_rules.py で生成）", path
         )
-        return []
-    terms: list[tuple[str, list[str]]] = []
+        return [], []
+    parents_by_section: dict[str, list[str]] = {}
+    for number in sorted(known_numbers):
+        section, _, rest = number.partition(".")
+        if rest and rest.isdigit():  # レター無し＝親ルール
+            parents_by_section.setdefault(section, []).append(number)
+    for parents in parents_by_section.values():
+        # 文字列ソートだと "903.10" が "903.2" より前に来る。「章の先頭K親」を数値順で
+        # 取れるよう数値ソートにする
+        parents.sort(key=lambda n: int(n.partition(".")[2]))
+
+    explicit_terms: list[tuple[str, list[str]]] = []
+    section_terms: list[tuple[str, list[str]]] = []
     for entry in json.loads(path.read_text(encoding="utf-8")):
         rules = [n for n in entry["rules"] if n in known_numbers]
-        if not rules:
-            continue
+        section_rules: list[str] = []
+        for section in entry.get("sections", []):
+            parents = parents_by_section.get(section, [])
+            if len(parents) > GLOSSARY_SECTION_MAX_PARENTS:
+                # 大きな章は全展開すると候補が洪水する（実測）。large_section_head 指定時のみ
+                # 章の**先頭K親**（章の定義・動作原理が並ぶ）に絞って展開する
+                if large_section_head <= 0:
+                    continue
+                parents = parents[:large_section_head]
+            section_rules += [n for n in parents if n not in rules]
+        keys = []
         if entry.get("term_ja"):
-            terms.append((entry["term_ja"], rules))
+            keys.append(normalize_text(entry["term_ja"]))
         if entry.get("term_en"):
-            terms.append((entry["term_en"].lower(), rules))
-    terms.sort(key=lambda pair: -len(pair[0]))
-    return terms
+            keys.append(normalize_text(entry["term_en"]))
+        for key in keys:
+            if rules:
+                explicit_terms.append((key, rules))
+            if section_rules:
+                section_terms.append((key, section_rules))
+    explicit_terms.sort(key=lambda pair: -len(pair[0]))
+    section_terms.sort(key=lambda pair: -len(pair[0]))
+    return explicit_terms, section_terms
 
 
 def _source_fingerprint(data_dir: Path, model_name: str) -> str:
@@ -185,6 +239,72 @@ def _source_fingerprint(data_dir: Path, model_name: str) -> str:
     manifest = json.loads((data_dir / "MANIFEST.json").read_text(encoding="utf-8"))
     hashes = "+".join(source["sha256"] for source in manifest["sources"].values())
     return f"{hashes}+{model_name}"
+
+
+def _get_existing_collection(client: ClientAPI) -> chromadb.Collection | None:
+    """既存コレクションを取得する（無ければ None）。
+
+    「無い」以外の例外（DB破損・権限等）は握りつぶさず伝播させる——黙って再構築に
+    倒すと障害が見えなくなるため。NotFoundError の型は chromadb のバージョンで揺れる
+    ので、例外名で判定する。
+    """
+    try:
+        return client.get_collection(COLLECTION_NAME)
+    except Exception as error:
+        if "notfound" in type(error).__name__.lower() or "does not exist" in str(error):
+            return None
+        raise
+
+
+def _is_reusable(
+    collection: chromadb.Collection | None, fingerprint: str, expected_count: int
+) -> bool:
+    """既存コレクションを再利用できるか（指紋＝CR版＋モデルと件数の一致）。"""
+    return (
+        collection is not None
+        and (collection.metadata or {}).get("fingerprint") == fingerprint
+        and collection.count() == expected_count
+    )
+
+
+def _build_collection(
+    data_dir: Path,
+    corpus: list[CorpusEntry],
+    embedder: EmbeddingModel,
+    fingerprint: str,
+    had_existing: bool,
+) -> chromadb.Collection:
+    """言語別ベクトル（number#en / number#ja）で ChromaDB コレクションを構築する。"""
+    client = chromadb.PersistentClient(path=str(data_dir / "chromadb"))
+    if had_existing:
+        client.delete_collection(COLLECTION_NAME)
+        # delete直後の同名createはハンドルが無効化されることがあるためクライアントを作り直す
+        client = chromadb.PersistentClient(path=str(data_dir / "chromadb"))
+    collection = client.create_collection(
+        COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine", "fingerprint": fingerprint},
+    )
+    ids: list[str] = []
+    texts: list[str] = []
+    metadatas: list[dict[str, str]] = []
+    for entry in corpus:
+        ids.append(f"{entry.number}#en")
+        texts.append(f"{entry.number} {entry.text_en}")
+        metadatas.append({"number": entry.number, "section": entry.section})
+        if entry.text_ja:
+            ids.append(f"{entry.number}#ja")
+            texts.append(f"{entry.number} {entry.text_ja}")
+            metadatas.append({"number": entry.number, "section": entry.section})
+    embeddings = embedder.encode_passages(texts)
+    batch = 500
+    for start in range(0, len(ids), batch):
+        collection.add(
+            ids=ids[start : start + batch],
+            embeddings=embeddings[start : start + batch],
+            metadatas=metadatas[start : start + batch],  # type: ignore[arg-type]
+        )
+    logger.info("ChromaDB 構築完了: %d vectors", collection.count())
+    return collection
 
 
 def build_or_load_index(settings: Settings) -> SearchIndex:
@@ -198,50 +318,18 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
     fingerprint = _source_fingerprint(settings.data_dir, embedder.model_name) + "+dual"
 
     client = chromadb.PersistentClient(path=str(settings.data_dir / "chromadb"))
-    try:
-        existing_collection = client.get_collection(COLLECTION_NAME)
-    except Exception:  # NotFoundError（chromadbのバージョンで型が揺れるため広く受ける）
-        existing_collection = None
+    existing = _get_existing_collection(client)
     # 言語別ベクトル（en/ja 各1エントリ。番号は metadata の number で引く）
     expected_count = sum(2 if entry.text_ja else 1 for entry in corpus)
-    is_fresh = (
-        existing_collection is not None
-        and (existing_collection.metadata or {}).get("fingerprint") == fingerprint
-        and existing_collection.count() == expected_count
-    )
-    if is_fresh and existing_collection is not None:
-        collection = existing_collection
+    if _is_reusable(existing, fingerprint, expected_count):
+        collection = existing
+        assert collection is not None  # _is_reusable が None を除外済み
         logger.info("既存インデックスを再利用: %d vectors", collection.count())
     else:
         logger.info("インデックスを再構築する（ベクトル数=%d）", expected_count)
-        if existing_collection is not None:
-            client.delete_collection(COLLECTION_NAME)
-            # delete直後の同名createはハンドルが無効化されることがあるためクライアントを作り直す
-            client = chromadb.PersistentClient(path=str(settings.data_dir / "chromadb"))
-        collection = client.create_collection(
-            COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine", "fingerprint": fingerprint},
+        collection = _build_collection(
+            settings.data_dir, corpus, embedder, fingerprint, existing is not None
         )
-        ids: list[str] = []
-        texts: list[str] = []
-        metadatas: list[dict[str, str]] = []
-        for entry in corpus:
-            ids.append(f"{entry.number}#en")
-            texts.append(f"{entry.number} {entry.text_en}")
-            metadatas.append({"number": entry.number, "section": entry.section})
-            if entry.text_ja:
-                ids.append(f"{entry.number}#ja")
-                texts.append(f"{entry.number} {entry.text_ja}")
-                metadatas.append({"number": entry.number, "section": entry.section})
-        embeddings = embedder.encode_passages(texts)
-        batch = 500
-        for start in range(0, len(ids), batch):
-            collection.add(
-                ids=ids[start : start + batch],
-                embeddings=embeddings[start : start + batch],
-                metadatas=metadatas[start : start + batch],  # type: ignore[arg-type]
-            )
-        logger.info("ChromaDB 構築完了: %d vectors", collection.count())
 
     reranker = (
         Reranker(settings.reranker_model, embedder.device)
@@ -250,6 +338,9 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
     )
     bm25 = BM25Okapi([tokenize(entry.embedding_text()) for entry in corpus])
     known_numbers = {entry.number for entry in corpus}
+    glossary_terms, glossary_section_terms = load_glossary_terms(
+        settings.data_dir, known_numbers, large_section_head=GLOSSARY_LARGE_SECTION_HEAD
+    )
     return SearchIndex(
         corpus=corpus,
         by_number={entry.number: entry for entry in corpus},
@@ -257,5 +348,6 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         bm25=bm25,
         embedder=embedder,
         reranker=reranker,
-        glossary_terms=load_glossary_terms(settings.data_dir, known_numbers),
+        glossary_terms=glossary_terms,
+        glossary_section_terms=glossary_section_terms,
     )

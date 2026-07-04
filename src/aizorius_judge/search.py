@@ -19,7 +19,7 @@ from collections.abc import Sequence
 
 from chromadb.api.types import Where
 
-from aizorius_judge.data_loader import SearchIndex, tokenize
+from aizorius_judge.data_loader import SearchIndex, normalize_text, tokenize
 from aizorius_judge.models import CorpusEntry, RuleGroup, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "HybridSearcher",
     "group_by_parent",
+    "matches_number_prefix",
+    "number_sort_key",
     "parent_of",
     "rrf_fuse",
     "weighted_fuse",
@@ -34,9 +36,12 @@ __all__ = [
 
 _RULE_NUMBER_QUERY_RE = re.compile(r"^\s*(\d{3})(?:\.(\d+)([a-z])?)?\.?\s*$")
 _PARENT_RE = re.compile(r"^(\d{3}\.\d+)[a-z]$")
+_NUMBER_PARTS_RE = re.compile(r"^(\d{3})(?:\.(\d+)([a-z])?)?$")
 
 # 融合前に各系統から取る候補数（融合・rerank後にグループ化して絞る）
 CANDIDATE_POOL = 50
+# 用語集セクション展開系統の融合重み（弱い補助。search.py の _hybrid 参照）
+GLOSSARY_SECTION_WEIGHT = 0.3
 
 
 def parent_of(number: str) -> str:
@@ -45,20 +50,61 @@ def parent_of(number: str) -> str:
     return match.group(1) if match else number
 
 
-def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = 60) -> dict[str, float]:
-    """Reciprocal Rank Fusion。複数のランキングを 1/(k+rank) の和で融合する（純粋関数）。
+def number_sort_key(number: str) -> tuple[int, int, str]:
+    """ルール番号の数値順ソートキー（文字列比較だと "702.10" < "702.2" になるため）。
+
+    形式外の番号は末尾に寄せる（section=999）。
+    """
+    match = _NUMBER_PARTS_RE.match(number)
+    if not match:
+        return (999, 999, number)
+    section = int(match.group(1))
+    sub = int(match.group(2)) if match.group(2) else 0
+    return (section, sub, match.group(3) or "")
+
+
+def matches_number_prefix(number: str, prefix: str) -> bool:
+    """ルール番号がプレフィックス問い合わせに該当するか（境界を厳密に判定する）。
+
+    単純な前方一致だと "702.9" に "702.90"〜"702.99" が混入する（CR実データで再現）ため、
+    プレフィックスの形に応じて許す続き方を限定する:
+    - "702"（セクション）: 完全一致か、直後が "."。
+    - "702.9"（親ルール）: 完全一致か、直後が英字1文字（サブルール）。
+    - "702.9b"（サブルール）: 完全一致のみ。
+    """
+    if number == prefix:
+        return True
+    if not number.startswith(prefix):
+        return False
+    rest = number[len(prefix) :]
+    if "." not in prefix:
+        return rest.startswith(".")
+    if prefix[-1].isdigit():
+        return len(rest) == 1 and rest.isalpha()
+    return False
+
+
+def rrf_fuse(
+    rankings: Sequence[Sequence[str]],
+    k: int = 60,
+    weights: Sequence[float] | None = None,
+) -> dict[str, float]:
+    """Reciprocal Rank Fusion。複数のランキングを w/(k+rank) の和で融合する（純粋関数）。
 
     Args:
         rankings: 各検索系統のID列（順位順）。
         k: RRFの定数（標準60）。
+        weights: 系統ごとの重み（省略時は全て1.0。弱い補助系統に小さい値を与える）。
 
     Returns:
         ID→融合スコア（降順ソートは呼び出し側）。
     """
+    if weights is None:
+        weights = [1.0] * len(rankings)
     scores: dict[str, float] = {}
-    for ranking in rankings:
+    for ranking, weight in zip(rankings, weights, strict=True):
         for rank, doc_id in enumerate(ranking, start=1):
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+            scores[doc_id] = scores.get(doc_id, 0.0) + weight / (k + rank)
     return scores
 
 
@@ -94,18 +140,17 @@ def group_by_parent(
     for number in ranked_numbers:
         parent = parent_of(number)
         if parent not in matched:
+            if parent not in corpus_by_parent:
+                continue  # コーパスに親が無い番号に max_groups の枠を消費させない
             if len(ordered_parents) >= max_groups:
                 continue
             ordered_parents.append(parent)
             matched[parent] = []
-        if parent in matched:
-            matched[parent].append(number)
+        matched[parent].append(number)
 
     groups: list[RuleGroup] = []
     for parent in ordered_parents:
-        members = corpus_by_parent.get(parent, [])
-        if not members:
-            continue
+        members = corpus_by_parent[parent]
         best_score = max(scores.get(n, 0.0) for n in matched[parent])
         groups.append(
             RuleGroup(
@@ -132,8 +177,17 @@ class HybridSearcher:
         for entry in index.corpus:
             self._corpus_by_parent.setdefault(parent_of(entry.number), []).append(entry)
 
+    @property
+    def glossary_terms(self) -> list[tuple[str, list[str]]]:
+        """照合用語→参照ルール番号の対応（読み取り用）。
+
+        反復検索のキーワード導出（scripts/eval_retrieval.py）など、検索の外側が
+        用語対応を参照するための公開アクセサ（内部の SearchIndex に直接触れさせない）。
+        """
+        return self._index.glossary_terms
+
     def search(
-        self, query: str, max_groups: int = 5, section: str | None = None
+        self, query: str, max_groups: int = 7, section: str | None = None
     ) -> list[RuleGroup]:
         """ルールを検索し、親ルール単位のグループで返す。
 
@@ -166,8 +220,11 @@ class HybridSearcher:
     def _direct_number_lookup(
         self, query: str, max_groups: int, section: str | None
     ) -> list[RuleGroup] | None:
-        """クエリがルール番号そのものの場合の直接引き。番号でなければ None。"""
-        match = _RULE_NUMBER_QUERY_RE.match(query)
+        """クエリがルール番号そのものの場合の直接引き。番号でなければ None。
+
+        全角の番号（"７０２．９ｂ"）も NFKC 正規化して受け付ける。
+        """
+        match = _RULE_NUMBER_QUERY_RE.match(normalize_text(query))
         if not match:
             return None
         prefix = match.group(1) + (f".{match.group(2)}" if match.group(2) else "")
@@ -176,11 +233,11 @@ class HybridSearcher:
         hits = [
             entry.number
             for entry in self._index.corpus
-            if entry.number == prefix or entry.number.startswith(prefix)
+            if matches_number_prefix(entry.number, prefix)
         ]
         if section:
             hits = [n for n in hits if self._index.by_number[n].section == section]
-        hits.sort(key=lambda n: (n != prefix, n))
+        hits.sort(key=lambda n: (n != prefix, number_sort_key(n)))
         scores = {n: 1.0 for n in hits}
         return group_by_parent(hits, scores, self._corpus_by_parent, max_groups)
 
@@ -191,10 +248,24 @@ class HybridSearcher:
             self._vector_ranking(query, section),
             self._bm25_ranking(query, section),
         ]
-        glossary_ranking = self._glossary_ranking(query, section)
+        weights = [1.0, 1.0]
+        glossary_ranking = self._glossary_ranking(
+            query, section, self._index.glossary_terms
+        )
         if glossary_ranking:
             rankings.append(glossary_ranking)
-        fused = rrf_fuse(rankings, k=self._rrf_k)
+            weights.append(1.0)
+        # セクション展開は「候補pool（rerank対象）に種を撒く」ための弱い補助系統。
+        # rerank無しだと top群を直接押し上げて全指標が悪化する（実測）ため、reranker がある
+        # 構成でのみ有効化する
+        if self._index.reranker is not None:
+            section_ranking = self._glossary_ranking(
+                query, section, self._index.glossary_section_terms
+            )
+            if section_ranking:
+                rankings.append(section_ranking)
+                weights.append(GLOSSARY_SECTION_WEIGHT)
+        fused = rrf_fuse(rankings, k=self._rrf_k, weights=weights)
         ranked = [n for n, _ in sorted(fused.items(), key=lambda item: -item[1])]
         scores = fused
         if self._index.reranker is not None and ranked:
@@ -232,15 +303,18 @@ class HybridSearcher:
             ]
         return [entry.number for entry, score in ranked[:CANDIDATE_POOL] if score > 0]
 
-    def _glossary_ranking(self, query: str, section: str | None) -> list[str]:
-        """クエリに含まれるMTG用語を用語集と照合し、定義ルール番号を返す（決定論）。
+    def _glossary_ranking(
+        self, query: str, section: str | None, terms: list[tuple[str, list[str]]]
+    ) -> list[str]:
+        """クエリに含まれるMTG用語を用語対応表と照合し、ルール番号を返す（決定論）。
 
         用語は長い順に照合する（「プレインズウォーカー越えトランプル」が「トランプル」より
         先に当たるように）。同じルール番号は最初の（=最も特異的な）用語の位置で採用。
+        クエリは NFKC 正規化してから照合する（全角半角ゆれの吸収。用語キー側も正規化済み）。
         """
-        query_lower = query.lower()
+        query_lower = normalize_text(query)
         ranking: list[str] = []
-        for term, rules in self._index.glossary_terms:
+        for term, rules in terms:
             if term not in query_lower:
                 continue
             for number in rules:

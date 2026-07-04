@@ -1,7 +1,7 @@
 ---
 name: qa
 description: 品質ゲートを一括実行する。「QAして」「チェック回して」「品質ゲートを通して」で起動、または実装作業の仕上げに積極的に使う。Ruff(lint)→Black(--check)→basedpyright(型)→pytest(テスト)の順に実行し、失敗があれば修正して再実行、全部通るまで繰り返してから結果を表で報告する。
-model: inherit
+model: sonnet
 allowed-tools: Bash(uv run:*), Read, Edit, Grep, Glob
 ---
 

@@ -50,11 +50,20 @@ def build_document(
         else raw.splitlines()
     )
     rules = parse_rules_lines(lines)
+    # 原文側の重複（mtg-jp HTML に 505.4 が2回ある等）を初出優先でユニーク化する
+    seen: set[str] = set()
+    unique_rules = []
+    for rule in rules:
+        if rule.number in seen:
+            logger.warning("%s: 番号 %s が重複（初出を採用）", language, rule.number)
+            continue
+        seen.add(rule.number)
+        unique_rules.append(rule)
     return RulesDocument(
         language=language,
         effective_date=effective_date,
         source_sha256=_sha256(source_path),
-        rules=rules,
+        rules=unique_rules,
     )
 
 
@@ -64,6 +73,7 @@ def main() -> int:
         (REPO_ROOT / "data" / "MANIFEST.json").read_text(encoding="utf-8")
     )
 
+    documents = {}
     for key, language in (("cr_en", "en"), ("cr_ja", "ja")):
         source = manifest["sources"][key]
         source_path = REPO_ROOT / source["local_file"]
@@ -78,6 +88,7 @@ def main() -> int:
             )
             return 1
         document = build_document(language, source_path, source["effective_date"])
+        documents[language] = document
         out_path = REPO_ROOT / "data" / f"comprehensive_rules_{language}.json"
         out_path.write_text(document.model_dump_json(indent=1), encoding="utf-8")
         logger.info(
@@ -87,6 +98,31 @@ def main() -> int:
             out_path.relative_to(REPO_ROOT),
             document.effective_date,
         )
+
+    # パース結果の自己検証: 抽出が静かに壊れた（サイト構造変更等）場合にここで止める。
+    # 閾値は現行版の実測（en 3153 / ja 3123 / 共通率 ~99%）に安全側の余裕を持たせた値。
+    en_numbers = {rule.number for rule in documents["en"].rules}
+    ja_numbers = {rule.number for rule in documents["ja"].rules}
+    if len(en_numbers) < 3000 or len(ja_numbers) < 3000:
+        logger.error(
+            "ルール数が異常に少ない（en=%d ja=%d）。抽出の破損を疑う。",
+            len(en_numbers),
+            len(ja_numbers),
+        )
+        return 1
+    coverage = len(en_numbers & ja_numbers) / len(ja_numbers)
+    if coverage < 0.97:
+        logger.error(
+            "日英の番号一致率が低い（%.3f）。版ズレまたは抽出の破損を疑う。", coverage
+        )
+        return 1
+    logger.info(
+        "自己検証OK: en=%d ja=%d 共通=%d（ja側一致率 %.3f）",
+        len(en_numbers),
+        len(ja_numbers),
+        len(en_numbers & ja_numbers),
+        coverage,
+    )
 
     # 用語集（日英マージ）: 用語→ルール番号の決定論的対応表として検索の第3系統に使う
     en_raw = (REPO_ROOT / manifest["sources"]["cr_en"]["local_file"]).read_text(

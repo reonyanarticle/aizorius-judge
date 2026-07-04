@@ -35,8 +35,19 @@ class ScryfallClient:
         self._lock = asyncio.Lock()
 
     async def _get(
-        self, path: str, params: dict[str, str] | None = None
+        self,
+        path: str,
+        params: dict[str, str] | None = None,
+        not_found_means_card: bool = True,
     ) -> dict[str, Any]:
+        """GETの共通処理（レート制限・エラー整形）。
+
+        Args:
+            path: APIパス。
+            params: クエリパラメータ。
+            not_found_means_card: 404を「カードが見つからない」と解釈するか。
+                カード特定後の2段目（rulings等）の404はカード不在ではないため False。
+        """
         async with self._lock:
             wait = MIN_INTERVAL_SECONDS - (time.monotonic() - self._last_request_at)
             if wait > 0:
@@ -48,11 +59,14 @@ class ScryfallClient:
             )
         except httpx.HTTPError as error:
             raise ScryfallError(f"Scryfall request failed: {error}") from error
-        if response.status_code == 404:
+        if response.status_code == 404 and not_found_means_card:
             raise CardNotFoundError(params.get("fuzzy", path) if params else path)
         if response.status_code != 200:
             raise ScryfallError(f"Scryfall HTTP {response.status_code}: {path}")
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as error:
+            raise ScryfallError(f"Scryfall invalid JSON: {path}") from error
 
     async def lookup_card(self, card_name: str) -> Card:
         """カード名（日英・多少の表記ゆれ可）からカード情報を引く。
@@ -76,7 +90,9 @@ class ScryfallClient:
         """カードの公式裁定リストを取得する（カード特定→rulings_uri）。"""
         data = await self._get("/cards/named", params={"fuzzy": card_name})
         card = _to_card(data)
-        rulings_data = await self._get(f"/cards/{data['id']}/rulings")
+        rulings_data = await self._get(
+            f"/cards/{data['id']}/rulings", not_found_means_card=False
+        )
         rulings = [
             CardRuling(
                 source=item.get("source", ""),
@@ -91,6 +107,14 @@ class ScryfallClient:
 
 def _to_card(data: dict[str, Any]) -> Card:
     faces = data.get("card_faces") or []
+
+    def face_fallback(key: str) -> Any:
+        """トップレベルに無い属性を第1面から補う（Transform/MDFCはP/T等が各面にある）。"""
+        value = data.get(key)
+        if value is not None:
+            return value
+        return faces[0].get(key) if faces else None
+
     oracle_text = data.get("oracle_text") or "\n//\n".join(
         face.get("oracle_text", "") for face in faces
     )
@@ -103,8 +127,8 @@ def _to_card(data: dict[str, Any]) -> Card:
         oracle_text=oracle_text,
         colors=data.get("colors") or [],
         color_identity=data.get("color_identity") or [],
-        power=data.get("power"),
-        toughness=data.get("toughness"),
-        loyalty=data.get("loyalty"),
+        power=face_fallback("power"),
+        toughness=face_fallback("toughness"),
+        loyalty=face_fallback("loyalty"),
         keywords=data.get("keywords") or [],
     )

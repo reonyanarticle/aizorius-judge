@@ -30,9 +30,14 @@
 - **eval-first**：dataset が唯一の物差し。検索単体（recall@5・pytest）／ツール単体（pytest）／統合（Claude Code＋eval-runner）／外部（GPT-4o・任意）の4層 → [docs/EVALUATION.md](docs/EVALUATION.md)。
 - 合格基準：recall@5≥0.8（検索）、スコア≥7/10・全体精度80%以上（統合）。Commander（統率者戦）関連を厚めに。
 
-## サブエージェント / skill / hook
-- サブエージェント：`dataset-curator`（opus・memory付き）＝golden datasetの作成・拡充と出典検証。`eval-runner`（sonnet・memory付き）＝統合評価の実行と回帰検知。`critical-reviewer`（opus）＝設計・計画・前提の批判的点検。コード差分の検証はユーザーレベルの `tech-lead-reviewer`。
-- skill：`/qa`（Ruff→Black→basedpyright→pytest を通るまで）、`/mcp-smoke`（3ツールの実挙動をPASS/FAIL）、`/eval`（eval-runnerへ委譲）、`/commit`（混入チェック込みの日本語コミット）、`/docs-check`（docs規約リンター）。
+## 進め方（対話ルール）
+- **設計・計画・ドキュメントだけを頼まれたら、承認前に実装コードを書かない・足場を作らない**（スコープ確認が先）。深掘りは `design-planner` サブエージェントに委ねる。
+- **共有・永続の設定**（`.claude/settings.json`・モデルピン等）は勝手に変更せず、**提案→承認**を経る。個人事情は local/user スコープへ。
+- **成果物は検証してから完了報告**：ファイルが開ける・仕様に合う・テストが通ることを確認する（「たぶん動く」で渡さない）。
+
+## サブエージェント / skill / hook（モデルは作業の重さで使い分ける）
+- サブエージェント：`design-planner`（opus・コード禁止）＝設計・計画の立案。`dataset-curator`（opus・memory付き）＝golden datasetの作成・拡充と出典検証。`eval-runner`（sonnet・memory付き）＝統合評価の実行と回帰検知。`critical-reviewer`（opus）＝設計・計画・前提の批判的点検。`rules-reviewer`（sonnet）＝コード差分の CLAUDE.md／`.claude/rules/` 準拠チェック（修正せず報告のみ）。
+- skill：`/test`（**haiku**・テスト実行と報告のみ）、`/qa`（**sonnet**・失敗を修正して通るまで）、`/commit`（**sonnet**・混入チェック込みの日本語コミット）、`/docs-check`（**sonnet**・docs規約リンター）、`/mcp-smoke`（sonnet・3ツールの実挙動をPASS/FAIL）、`/eval`（eval-runnerへ委譲）。
 - hook：`py-format.sh`（編集した`.py`をBlack+Ruff自動整形）／`stop-gate.sh`（未コミットの`.py`変更があるターン終了時に品質ゲートを回し、失敗ならblockして自己修正させる。2周目は素通し）。
 - 実装の区切りでは `/qa` → `/mcp-smoke` →（検索に触れたら）`/eval` →（docs/rulesに触れたら）`/docs-check` の順で自己検証してから完了報告する。
 

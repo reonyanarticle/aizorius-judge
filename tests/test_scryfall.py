@@ -109,3 +109,64 @@ async def test_live_rulings_orcish_bowmasters() -> None:
     print(
         json.dumps([r.model_dump() for r in rulings[:2]], ensure_ascii=False, indent=1)
     )
+
+
+# --- 両面カード（Transform/MDFC）と2段目リクエストのエラー整形 ---
+
+DELVER = {
+    "id": "dfc-1",
+    "name": "Delver of Secrets // Insectile Aberration",
+    "type_line": "Creature — Human Wizard // Creature — Human Insect",
+    "color_identity": ["U"],
+    "keywords": ["Transform"],
+    "card_faces": [
+        {
+            "name": "Delver of Secrets",
+            "mana_cost": "{U}",
+            "oracle_text": "At the beginning of your upkeep...",
+            "power": "1",
+            "toughness": "1",
+        },
+        {
+            "name": "Insectile Aberration",
+            "mana_cost": "",
+            "oracle_text": "Flying",
+            "power": "3",
+            "toughness": "2",
+        },
+    ],
+}
+
+
+async def test_lookup_card_dfc_falls_back_to_first_face() -> None:
+    # 変身カードは power/toughness がトップレベルに無く各面にある（第1面で補う）
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=DELVER)
+
+    card = await make_client(handler).lookup_card("秘密を掘り下げる者")
+    assert card.power == "1"
+    assert card.toughness == "1"
+    assert "Flying" in card.oracle_text  # 両面の oracle_text を結合済み
+
+
+async def test_rulings_404_is_not_card_not_found() -> None:
+    # カード特定は成功し、2段目（rulings）だけ404 → CardNotFoundError ではなく ScryfallError
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/cards/named":
+            return httpx.Response(200, json=BOLT)
+        return httpx.Response(404, json={"object": "error"})
+
+    from aizorius_judge.errors import ScryfallError
+
+    with pytest.raises(ScryfallError):
+        await make_client(handler).get_card_rulings("稲妻")
+
+
+async def test_invalid_json_raises_scryfall_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>not json</html>")
+
+    from aizorius_judge.errors import ScryfallError
+
+    with pytest.raises(ScryfallError):
+        await make_client(handler).lookup_card("稲妻")

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 __all__ = [
     "Card",
+    "CardNamePair",
     "CardRuling",
     "CorpusEntry",
     "DatasetQuestion",
@@ -54,7 +55,8 @@ class GlossaryEntry(BaseModel):
         term_ja: 日本語用語（例 "威迫"。読み仮名は除去済み）。
         definition_en: 英語定義文。
         definition_ja: 日本語定義文。
-        rules: 定義文中で参照されるルール番号（"702.111" 等。セクションのみの参照は除く）。
+        rules: 定義文中で参照される個別ルール番号（"702.111" 等）。
+        sections: 定義文中でセクション単位で参照される番号（例 "502"。検索側で親ルール群に展開する）。
     """
 
     term_en: str
@@ -62,6 +64,7 @@ class GlossaryEntry(BaseModel):
     definition_en: str = ""
     definition_ja: str | None = None
     rules: list[str] = []
+    sections: list[str] = []
 
 
 class CorpusEntry(BaseModel):
@@ -151,6 +154,18 @@ class EvaluationCriteria(BaseModel):
     forbidden_mistakes: list[str] = Field(min_length=1)
 
 
+class CardNamePair(BaseModel):
+    """設問が参照するカード名の日英ペア（card_interactions カテゴリで使用）。
+
+    Attributes:
+        ja: 日本語カード名（例 "血染めの月"）。
+        en: 英語カード名（例 "Blood Moon"。Scryfall照合のキー）。
+    """
+
+    ja: str = Field(min_length=1)
+    en: str = Field(min_length=1)
+
+
 class DatasetQuestion(BaseModel):
     """評価データセット（evaluation/dataset.json）の1問。
 
@@ -158,6 +173,7 @@ class DatasetQuestion(BaseModel):
         id: 一意ID（例 "commander-007"）。
         category: docs/EVALUATION.md §3 のカテゴリ。
         question: ルール質問（日本語）。
+        cards: 設問が参照するカード名の日英ペア（任意。lookup_card 入力を機械可読にする）。
         expected_tools: 期待されるツール呼び出し。
         expected_answer: 期待回答（結論・引用ルール・重要事実）。
         retrieval_relevant_rules: 検索が返すべきルール番号の完全集合（recall@kの正解）。
@@ -169,6 +185,7 @@ class DatasetQuestion(BaseModel):
     id: str = Field(min_length=1)
     category: str = Field(min_length=1)
     question: str = Field(min_length=1)
+    cards: list[CardNamePair] | None = None
     expected_tools: list[str] = Field(min_length=1)
     expected_answer: ExpectedAnswer
     retrieval_relevant_rules: list[str] = Field(min_length=1)

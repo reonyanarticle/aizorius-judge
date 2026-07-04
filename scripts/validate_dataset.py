@@ -27,6 +27,7 @@ VALID_CATEGORIES = {
     "commander",
     "layers",
     "replacement_effects",
+    "card_interactions",
 }
 
 
