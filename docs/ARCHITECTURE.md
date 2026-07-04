@@ -112,6 +112,15 @@ sequenceDiagram
   - ライセンスとは別に**利用規約の制約**（例: RulesGuru の「ML利用は要許諾」）はライセンス互換でも許諾取得が必要。
 - 取り込み時の品質運用は評価データセットの既存規約のまま（逐語コピーなし・言い換え＋CR照合・人間承認 → [EVALUATION.md](EVALUATION.md) §3）。
 
+外部Q&Aソースの一次調査結果（2026-07-04。**CC0/CC BY の MTGルールQ&Aは現存しない**）:
+
+| ソース | 条件（一次確認済み） | 判定 |
+|---|---|---|
+| RulesGuru（rulesguru.org・約1,500問・人手検証） | 非商用＋帰属で利用可だが「**ML模型の開発への利用は明示許諾が必要**」（About原文）。許諾は撤回権付き | **要許諾**（連絡先 is.aack@yahoo.com）。許諾を得ても非商用・撤回権付きのため**MITリポジトリへの同梱は不可**＝ローカル取得・非再配布（CRと同方式）が前提 |
+| boardgames.stackexchange.com（MTGタグ） | 投稿は CC BY-SA 4.0（投稿URL＋著者プロフィールへのリンク帰属が必須）。**公式ダンプは2024年以降「LLM訓練に使わない」同意付き** | **隔離すれば可**（本体に混ぜず別ファイル or ローカル限定）。一括ダンプでなく対象タグの個別取得が無難。ライセンス版の切替日ページは未確認（取り込み前に人手確認） |
+| Hugging Face 上のMTG QAデータセット（MTG-Eval 80k ほか5件） | 全件**ライセンス宣言なし**または無ライセンス上流のマージ。多くはGPT合成で正解保証もない | **不可** |
+| Cranial Insertion（判事執筆の週刊Q&A） | 再利用許諾条項なし＝全権利留保 | **要許諾**（moko@cranial-insertion.com） |
+
 ### インデックス構築（初回 / モデル変更時）
 1. CR（PDF/TXT）を `scripts/parse_rules.py` でJSON化（`{number, text, section, category}` の配列）
 2. `data_loader.py` が ChromaDB へ投入（Embedding は自動計算＝ローカル）
