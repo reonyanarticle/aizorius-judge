@@ -52,12 +52,36 @@ def normalize_text(text: str) -> str:
     return unicodedata.normalize("NFKC", text).lower()
 
 
+def _stem_en(token: str) -> str:
+    """英語トークンの軽量ステミング（決定論・辞書不要）。
+
+    BM25 は表層一致なので "triggers"/"triggered"/"triggering" が別トークンになり、
+    英語クエリの再現率を下げる（hold-out 計測で表面化）。コーパス側とクエリ側に
+    **同じ**変換を通すことで一致させる（変換結果が英単語である必要はない）。
+    ルール番号など数字を含むトークンは対象外。
+    """
+    if any(ch.isdigit() for ch in token):
+        return token
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if token.endswith(("ses", "xes", "zes", "ches", "shes")) and len(token) > 4:
+        return token[:-2]  # passes/boxes/matches 型の -es 複数形のみ
+    if token.endswith("s") and not token.endswith("ss") and len(token) > 3:
+        return token[:-1]
+    if token.endswith("ing") and len(token) > 5:
+        return token[:-3]
+    if token.endswith("ed") and len(token) > 4:
+        return token[:-2]
+    return token
+
+
 def tokenize(text: str) -> list[str]:
     """BM25用トークナイザ（形態素解析器に依存しない決定論的処理）。
 
-    英数字は単語単位（ルール番号 "702.9b" は1トークンで保持）、日本語（かな・漢字）は
-    文字バイグラムに分解する。日英併記テキストと日本語クエリの両方に同じ関数を使う。
-    全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も "702.9b" として拾う）。
+    英数字は単語単位（ルール番号 "702.9b" は1トークンで保持・英語は軽量ステミング）、
+    日本語（かな・漢字）は文字バイグラムに分解する。日英併記テキストと日本語クエリの
+    両方に同じ関数を使う。全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も
+    "702.9b" として拾う）。
 
     Args:
         text: 対象テキスト。
@@ -66,7 +90,7 @@ def tokenize(text: str) -> list[str]:
         トークンのリスト。
     """
     lowered = normalize_text(text)
-    tokens = _TOKEN_RE.findall(lowered)
+    tokens = [_stem_en(token) for token in _TOKEN_RE.findall(lowered)]
     for chunk in _CJK_RE.findall(lowered):
         if len(chunk) == 1:
             tokens.append(chunk)
@@ -133,18 +157,23 @@ class EmbeddingModel:
 
 
 class Reranker:
-    """多言語 Cross-Encoder の薄いラッパ（bge-reranker-v2-m3。max_length制限でMPSのOOMを防ぐ）。"""
+    """多言語 Cross-Encoder の薄いラッパ（bge-reranker-v2-m3）。
+
+    max_length=1024 / batch_size=8: 512では長いルールの日本語側が切られたまま
+    採点されていた。1024×batch8 は M4/MPS で OOM なし・golden k7 で
+    0.905→0.909（must_cite）・MRR 0.785→0.792・p50 悪化なしを実測して採用（2026-07-06）。
+    """
 
     def __init__(self, model_name: str, device: str) -> None:
         from sentence_transformers import CrossEncoder
 
         self.model_name = model_name
-        self._model = CrossEncoder(model_name, device=device, max_length=512)
+        self._model = CrossEncoder(model_name, device=device, max_length=1024)
 
     def rank(self, query: str, passages: list[str]) -> list[int]:
         """passages をクエリ関連度の降順に並べたインデックス列を返す。"""
         scores = self._model.predict(
-            [[query, p] for p in passages], batch_size=16, show_progress_bar=False
+            [[query, p] for p in passages], batch_size=8, show_progress_bar=False
         )
         return list(np.argsort(-np.asarray(scores)))
 

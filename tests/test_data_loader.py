@@ -126,3 +126,15 @@ def test_load_glossary_terms_large_section_head(tmp_path: Path) -> None:
         "903.3",
         "903.4",
     ]  # 文字列順でなく数値順の先頭
+
+
+def test_tokenize_stems_english_variants() -> None:
+    # BM25の表層一致対策: 複数形・過去形・進行形が同一トークンに正規化される
+    from aizorius_judge.data_loader import tokenize
+
+    assert (
+        tokenize("triggers")[0] == tokenize("triggered")[0] == tokenize("triggering")[0]
+    )
+    assert tokenize("creatures")[0] == tokenize("creature")[0]
+    assert tokenize("abilities")[0] == tokenize("ability")[0]
+    assert "702.9b" in tokenize("702.9b resolves")  # 番号はステミング対象外
