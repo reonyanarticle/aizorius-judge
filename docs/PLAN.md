@@ -58,6 +58,12 @@
 - `scryfall.py`：`_to_card` の `card_faces` フォールバック分岐が未テスト。
 - `scripts/validate_dataset.py`：subset検査（cited⊆relevant 等）ロジック自体のテストが無い（データセット品質ゲートの自己検証）。
 
+### レビュー2巡目（2026-07-06）の残メモ（重大0・対応済み分は除く）
+- ⏹**見送り** `rules_parser.py` `_SECTION_REF_RE` の列挙非対称（"rules 613, 707" の裸セクション列挙は先頭しか拾わない）：現行 glossary.json ではセクション参照は単発のみで実害なし。CR改版で列挙が現れたら対応。
+- ⏹**許容** `scripts/fetch_holdout_queries.py` の同期 httpx とリトライなし：手動一回性のローカル取得スクリプトで同時実行なし。async 必須の規約はサーバー層（Scryfall クライアント）に適用するもの。User-Agent・1s sleep・backoff 遵守は実装済み。
+- ✅**済**（2026-07-06） マシン依存のリランカー設定（max_length/batch）を settings.py へ移動＋settings/定数の線引きを [.claude/rules/python.md](../.claude/rules/python.md) §0 に明文化。
+- ✅**済**（2026-07-06） eval_holdout の4要素タプルを dataclass（HoldoutCase）化。
+
 ### 検索改善の設計方針（反証レビューで確定した優先順位）
 - 「実運用の反復検索で救われる」に依存しない：生成層評価は決定論的2クエリ通過後の失敗であり、救済言い換えにはクライアント側のMTG知識が要る（未測定）。
 - 最優先はグループ化粒度の構造穴（同一セクション内の別親、例 704.5f と 704.3 が非同伴）への対処。rerank pool への兄弟投入は distractor 増で棄却済みだが、**rerank後の勝ちグループへの同伴は未検証**。

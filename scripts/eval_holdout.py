@@ -20,6 +20,7 @@ import json
 import logging
 import statistics
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -31,6 +32,16 @@ logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOLDOUT_PATH = REPO_ROOT / "evaluation" / "holdout" / "se-questions.jsonl"
+
+
+@dataclass(frozen=True)
+class HoldoutCase:
+    """hold-out の1問（実ユーザー質問＋採用回答由来の弱ラベル）。"""
+
+    title: str
+    body: str
+    labels: set[str]
+    year: int
 
 
 def main() -> int:
@@ -61,7 +72,7 @@ def main() -> int:
         for line in holdout_path.read_text(encoding="utf-8").splitlines()
     ]
     dropped_obsolete = 0
-    cases: list[tuple[str, str, set[str], int]] = []
+    cases: list[HoldoutCase] = []
     for record in records:
         labels = set(record["answer_cited_rules"])
         current = labels & known
@@ -70,7 +81,7 @@ def main() -> int:
             year = 1970
             if record.get("creation_date"):
                 year = datetime.fromtimestamp(int(record["creation_date"]), tz=UTC).year
-            cases.append((record["title"], record["body"], current, year))
+            cases.append(HoldoutCase(record["title"], record["body"], current, year))
     if args.limit:
         cases = cases[: args.limit]
 
@@ -82,21 +93,23 @@ def main() -> int:
         by_era: dict[str, list[float]] = {}
         full_hits = 0
         misses: list[tuple[str, set[str]]] = []
-        for title, body, labels, year in cases:
-            groups = searcher.search(make_query(title, body), max_groups=args.k)
+        for case in cases:
+            groups = searcher.search(
+                make_query(case.title, case.body), max_groups=args.k
+            )
             got = {rule.number for group in groups for rule in group.rules}
-            coverage = len(labels & got) / len(labels)
+            coverage = len(case.labels & got) / len(case.labels)
             coverages.append(coverage)
             era = (
                 "〜2015"
-                if year <= 2015
-                else ("2016〜2020" if year <= 2020 else "2021〜")
+                if case.year <= 2015
+                else ("2016〜2020" if case.year <= 2020 else "2021〜")
             )
             by_era.setdefault(era, []).append(coverage)
             if coverage == 1.0:
                 full_hits += 1
             elif coverage == 0.0:
-                misses.append((title, labels))
+                misses.append((case.title, case.labels))
         era_text = " ".join(
             f"{era}:{statistics.mean(vals):.3f}(n={len(vals)})"
             for era, vals in sorted(by_era.items())
