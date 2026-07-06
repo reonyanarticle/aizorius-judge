@@ -10,7 +10,7 @@ SEデータ本体はローカル限定（CC BY-SA・`evaluation/holdout/` は gi
   （得票順200問＋新着順200問）。採用回答が引用した現行CRの番号を**弱ラベル**とし、
   質問文（title / title+本文冒頭）での検索（品質構成・k=7）がラベルをどれだけ返すかを測る。
 - **FAQ候補**: 公式リリースノート（Edge of Eternities / FINAL FANTASY）由来の拡充候補15問
-  （`dataset-candidates-faq.jsonl`・承認前）に対し、golden 同様の recall/must_cite を測る。
+  （`reviews/dataset-candidates-faq.jsonl`・承認前）に対し、golden 同様の recall/must_cite を測る。
 - 注意: 弱ラベルは「回答者がたまたま引用した全番号」で、golden の must_cite（裁定の核1〜2条）
   と直接比較できない。周辺条文・別解筋の引用・改番前の番号（実在するが内容が違う）を含む。
 
@@ -64,7 +64,7 @@ SEデータ本体はローカル限定（CC BY-SA・`evaluation/holdout/` は gi
 3. **実ユーザー質問の約半分はカード固有の相互作用**で、これは検索単体でなく
    lookup_card 連携（MCP統合）で解く設計。card_interactions カテゴリ15問を先行整備済みであり、
    MCP統合評価でこの型の精度を測るのが正しい順序。
-4. FAQ候補15問は人間承認後に dataset へ統合（→ `evaluation/REVIEW-faq.md`）。
+4. FAQ候補15問は人間承認後に dataset へ統合（→ `evaluation/reviews/REVIEW-faq.md`）。
    union でも残る miss 3問（613.4a / 614.1a / 702.16e）は検索改善（セクション原理ルールの同伴）の
    追加テストケースになる。
 

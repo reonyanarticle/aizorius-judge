@@ -1,6 +1,6 @@
 # golden dataset 110問 — 人間承認用レビュー
 
-`evaluation/dataset.jsonl`（110問）は**候補**の状態。ルール正誤の最終署名は人間が行う（[docs/EVALUATION.md](../docs/EVALUATION.md) §3）。
+`evaluation/dataset.jsonl`（110問）は**候補**の状態。ルール正誤の最終署名は人間が行う（[docs/EVALUATION.md](../../docs/EVALUATION.md) §3）。
 承認したらこのファイルの「承認記録」を埋めてコミットする。修正が必要な問はIDで指摘する。
 レビュー方法：疑問のある問はIDを伝えれば**その都度再調査・検証して修正**する（basic_rules-001 で実施済みの運用）。
 

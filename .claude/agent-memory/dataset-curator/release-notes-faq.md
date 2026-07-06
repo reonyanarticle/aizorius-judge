@@ -30,7 +30,7 @@ metadata:
 - basic_rules-022 両面カードのゾーン別特性（他ゾーン=表面/スタック・戦場=上向きの面）: 712.8a, 712.8f (+712.8d)
 
 ## 第2回（2026-07-04）: EOE/FIN リリースノートから15問（layers/replacement/combat 厚め、承認前候補）
-候補=`evaluation/dataset-candidates-faq.jsonl` + `evaluation/REVIEW-faq.md`。**別セット**（『Edge of Eternities』/『FINAL FANTASY』）を使用（第1回のMarvel回避）。
+候補=`evaluation/reviews/dataset-candidates-faq.jsonl` + `evaluation/reviews/REVIEW-faq.md`。**別セット**（『Edge of Eternities』/『FINAL FANTASY』）を使用（第1回のMarvel回避）。
 すべてCR 2026-06-19実在確認済み。ID連番: layers-007〜011 / replacement_effects-006〜009 / combat-018〜023。
 - layers-007 設定P/T同士は後発が先発を上書き(7bタイムスタンプ)/修整・カウンターは7cで反映: 613.4b,613.4c(+613.7)
 - layers-008 P/T定義の特性定義能力は全ゾーンで機能・自分を数える: 604.3(+613.4a)

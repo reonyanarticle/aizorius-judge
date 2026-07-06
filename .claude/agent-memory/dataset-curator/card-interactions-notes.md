@@ -6,7 +6,7 @@ metadata:
 ---
 
 card_interactions 候補15問（`evaluation/dataset-candidates-cards.jsonl`）を CR 2026-06-19 (en) と
-Scryfall で検証した際の対応。カテゴリ設計・除外方針は `evaluation/REVIEW-cards.md`。See [[cr-version]]。
+Scryfall で検証した際の対応。カテゴリ設計・除外方針は `evaluation/reviews/REVIEW-cards.md`。See [[cr-version]]。
 
 ## Scryfall 取得の落とし穴
 - `/cards/named?fuzzy=` は **`Accept: application/json` ヘッダが無いと 400 Bad Request**（User-Agent だけでは不足）。

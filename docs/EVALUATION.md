@@ -30,7 +30,7 @@
 - 回帰：前回レポートより下がった問題は最優先で報告・対処する（eval-runner が検知）。
 
 ## 3. 評価データセット（`evaluation/dataset.jsonl`）
-125問（起案100＋公式リリースノートFAQ由来10＋カード個別15）。ルール一般110問を実装より先に作成し、カード個別（card_interactions）15問は生成層評価後に拡充（時期は [PLAN.md](PLAN.md)、承認記録は `evaluation/REVIEW.md` / `evaluation/REVIEW-cards.md`）。
+125問（起案100＋公式リリースノートFAQ由来10＋カード個別15）。ルール一般110問を実装より先に作成し、カード個別（card_interactions）15問は生成層評価後に拡充（時期は [PLAN.md](PLAN.md)、承認記録は `evaluation/reviews/`）。
 **形式は JSONL（1問=1行）の単一ファイル**。評価データセットの事実上の標準（OpenAI evals / Hugging Face datasets）に合わせる。1行=1問なので git diff が問単位になり、追記・行単位ツール（jq等）とも相性がよい。カテゴリはファイル分割でなく各問の `category` フィールドで表す。各問のスキーマ：
 
 | フィールド | 内容 |
