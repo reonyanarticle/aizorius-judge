@@ -2,7 +2,7 @@
 
 このファイルは **dataset-curator が起案・出典検証した候補** のレビュー用サマリである。
 **まだ承認されていない**。`evaluation/dataset.jsonl` 本体には未反映で、候補は
-`evaluation/dataset-candidates-cards.jsonl`（15問）にある。人間が内容を確認し、
+（統合済みのため候補ファイルは削除）（15問）にある。人間が内容を確認し、
 承認したものだけを本体へマージする。
 
 - 検証に使った一次資料: `data/comprehensive_rules_en.json`（**CR 2026-06-19 (en)**）。

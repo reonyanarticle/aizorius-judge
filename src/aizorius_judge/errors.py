@@ -14,7 +14,16 @@ class AizoriusJudgeError(Exception):
 
 
 class ScryfallError(AizoriusJudgeError):
-    """Scryfall API の呼び出し失敗（HTTPエラー・タイムアウト等）。"""
+    """Scryfall API の呼び出し失敗（HTTPエラー・タイムアウト等）。
+
+    Attributes:
+        status_code: HTTPステータス（通信エラー等で不明なら None）。ツール層が
+            レート制限（429）等を区別して扱えるよう保持する。
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class CardNotFoundError(ScryfallError):

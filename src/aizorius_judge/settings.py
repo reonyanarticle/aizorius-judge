@@ -24,4 +24,9 @@ class Settings(BaseSettings):
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_device: str = "mps"
     reranker_model: str | None = "BAAI/bge-reranker-v2-m3"
+    # リランカー入力の上限とバッチはマシン依存（メモリとのトレードオフ）。既定は
+    # M4/32GB での実測値（1024/8 で OOMなし・must_cite改善）。非力な環境では
+    # RERANKER_MAX_LENGTH=512 / RERANKER_BATCH_SIZE=4 等に下げる
+    reranker_max_length: int = 1024
+    reranker_batch_size: int = 8
     data_dir: Path = Path("data")

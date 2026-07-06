@@ -1,6 +1,6 @@
 # レビュー: リリースノート由来 FAQ 拡充候補（15問・人間承認前）
 
-このファイルは `evaluation/dataset-candidates-faq.jsonl`（15問）の人間レビュー用サマリ。
+このファイルは `evaluation/reviews/dataset-candidates-faq.jsonl`（15問）の人間レビュー用サマリ。
 承認されたら本体 `evaluation/dataset.jsonl` へ手動反映する。**dataset 本体には未反映**。
 
 ## 方針と前提

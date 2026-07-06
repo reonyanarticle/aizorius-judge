@@ -62,7 +62,10 @@ class ScryfallClient:
         if response.status_code == 404 and not_found_means_card:
             raise CardNotFoundError(params.get("fuzzy", path) if params else path)
         if response.status_code != 200:
-            raise ScryfallError(f"Scryfall HTTP {response.status_code}: {path}")
+            raise ScryfallError(
+                f"Scryfall HTTP {response.status_code}: {path}",
+                status_code=response.status_code,
+            )
         try:
             return response.json()
         except ValueError as error:

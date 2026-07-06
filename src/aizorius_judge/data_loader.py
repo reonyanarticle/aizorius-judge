@@ -52,12 +52,38 @@ def normalize_text(text: str) -> str:
     return unicodedata.normalize("NFKC", text).lower()
 
 
+def _stem_en(token: str) -> str:
+    """英語トークンの軽量ステミング（決定論・辞書不要）。
+
+    BM25 は表層一致なので "triggers"/"triggered"/"triggering" が別トークンになり、
+    英語クエリの再現率を下げる（hold-out 計測で表面化）。コーパス側とクエリ側に
+    **同じ**変換を通すことで一致させる（変換結果が英単語である必要はない）。
+    ルール番号など数字を含むトークンは対象外。
+    """
+    if any(ch.isdigit() for ch in token):
+        return token
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if token.endswith(("sses", "xes", "zes", "ches", "shes")) and len(token) > 4:
+        # passes/boxes/matches 型の -es 複数形のみ。"ses" まで含めると phases/cases
+        # （サイレントe＋s）が phas/cas に化けて単数形と不一致になる（レビュー指摘）
+        return token[:-2]
+    if token.endswith("s") and not token.endswith("ss") and len(token) > 3:
+        return token[:-1]
+    if token.endswith("ing") and len(token) > 5:
+        return token[:-3]
+    if token.endswith("ed") and len(token) > 4:
+        return token[:-2]
+    return token
+
+
 def tokenize(text: str) -> list[str]:
     """BM25用トークナイザ（形態素解析器に依存しない決定論的処理）。
 
-    英数字は単語単位（ルール番号 "702.9b" は1トークンで保持）、日本語（かな・漢字）は
-    文字バイグラムに分解する。日英併記テキストと日本語クエリの両方に同じ関数を使う。
-    全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も "702.9b" として拾う）。
+    英数字は単語単位（ルール番号 "702.9b" は1トークンで保持・英語は軽量ステミング）、
+    日本語（かな・漢字）は文字バイグラムに分解する。日英併記テキストと日本語クエリの
+    両方に同じ関数を使う。全角半角は NFKC で正規化してから切る（"７０２．９ｂ" も
+    "702.9b" として拾う）。
 
     Args:
         text: 対象テキスト。
@@ -66,7 +92,7 @@ def tokenize(text: str) -> list[str]:
         トークンのリスト。
     """
     lowered = normalize_text(text)
-    tokens = _TOKEN_RE.findall(lowered)
+    tokens = [_stem_en(token) for token in _TOKEN_RE.findall(lowered)]
     for chunk in _CJK_RE.findall(lowered):
         if len(chunk) == 1:
             tokens.append(chunk)
@@ -133,18 +159,29 @@ class EmbeddingModel:
 
 
 class Reranker:
-    """多言語 Cross-Encoder の薄いラッパ（bge-reranker-v2-m3。max_length制限でMPSのOOMを防ぐ）。"""
+    """多言語 Cross-Encoder の薄いラッパ（bge-reranker-v2-m3）。
 
-    def __init__(self, model_name: str, device: str) -> None:
+    max_length / batch_size はマシン依存の設定（settings.py から注入 →
+    `RERANKER_MAX_LENGTH` / `RERANKER_BATCH_SIZE`）。既定の 1024/8 は M4/MPS の実測:
+    512では長いルールの日本語側が切られたまま採点されており、1024×batch8 で
+    OOMなし・golden k7 0.905→0.909（must_cite）・MRR 0.785→0.792・p50 悪化なし（2026-07-06）。
+    """
+
+    def __init__(
+        self, model_name: str, device: str, max_length: int = 1024, batch_size: int = 8
+    ) -> None:
         from sentence_transformers import CrossEncoder
 
         self.model_name = model_name
-        self._model = CrossEncoder(model_name, device=device, max_length=512)
+        self._batch_size = batch_size
+        self._model = CrossEncoder(model_name, device=device, max_length=max_length)
 
     def rank(self, query: str, passages: list[str]) -> list[int]:
         """passages をクエリ関連度の降順に並べたインデックス列を返す。"""
         scores = self._model.predict(
-            [[query, p] for p in passages], batch_size=16, show_progress_bar=False
+            [[query, p] for p in passages],
+            batch_size=self._batch_size,
+            show_progress_bar=False,
         )
         return list(np.argsort(-np.asarray(scores)))
 
@@ -246,12 +283,18 @@ def _get_existing_collection(client: ClientAPI) -> chromadb.Collection | None:
 
     「無い」以外の例外（DB破損・権限等）は握りつぶさず伝播させる——黙って再構築に
     倒すと障害が見えなくなるため。NotFoundError の型は chromadb のバージョンで揺れる
-    ので、例外名で判定する。
+    ので、まず例外の型名で判定し、メッセージの部分一致は「型名に notfound を含まない
+    旧バージョンの ValueError 系」に限った最後の砦とする（契約はテストで固定）。
     """
     try:
         return client.get_collection(COLLECTION_NAME)
     except Exception as error:
-        if "notfound" in type(error).__name__.lower() or "does not exist" in str(error):
+        type_name = type(error).__name__.lower()
+        if "notfound" in type_name:
+            return None
+        if type_name in ("valueerror", "invalidcollectionexception") and (
+            "does not exist" in str(error)
+        ):
             return None
         raise
 
@@ -332,7 +375,12 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         )
 
     reranker = (
-        Reranker(settings.reranker_model, embedder.device)
+        Reranker(
+            settings.reranker_model,
+            embedder.device,
+            max_length=settings.reranker_max_length,
+            batch_size=settings.reranker_batch_size,
+        )
         if settings.reranker_model
         else None
     )

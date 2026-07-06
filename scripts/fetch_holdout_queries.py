@@ -103,6 +103,7 @@ def fetch_answers(
 
 
 def main() -> int:
+    """SEから採用回答つき質問を取得し、帰属・弱ラベルつきJSONLをローカルに書く。"""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--pages", type=int, default=2, help="100問/ページ")

@@ -15,8 +15,8 @@ from aizorius_judge.search import rrf_fuse, weighted_fuse
 
 def test_tokenize_keeps_rule_numbers() -> None:
     tokens = tokenize("Flying 702.9b works")
-    assert "702.9b" in tokens
-    assert "flying" in tokens
+    assert "702.9b" in tokens  # ルール番号はステミングされず保持
+    assert "fly" in tokens  # 英語は軽量ステミング（コーパス側と同じ変換で一致する）
 
 
 def test_tokenize_japanese_bigrams() -> None:
@@ -221,6 +221,6 @@ def test_direct_lookup_accepts_fullwidth_number(searcher) -> None:
 def test_glossary_matching_accepts_fullwidth_term(searcher) -> None:
     # 用語集照合はNFKC正規化済みキーと突き合わせる（全角英字の "Ｍｅｎａｃｅ" でも当たる）
     ranking = searcher._glossary_ranking(
-        "Ｍｅｎａｃｅ の意味", None, searcher._index.glossary_terms
+        "Ｍｅｎａｃｅ の意味", None, searcher.glossary_terms  # 公開プロパティ経由
     )
     assert any(n.startswith("702.111") for n in ranking)
