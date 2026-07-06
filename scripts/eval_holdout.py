@@ -20,7 +20,7 @@ import json
 import logging
 import statistics
 import sys
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from aizorius_judge.data_loader import build_or_load_index
@@ -34,6 +34,7 @@ HOLDOUT_PATH = REPO_ROOT / "evaluation" / "holdout" / "se-questions.jsonl"
 
 
 def main() -> int:
+    """hold-outファイルを読み、弱ラベル被覆@k（年代別内訳つき）を標準出力に出す。"""
     logging.basicConfig(level=logging.WARNING)
     parser = argparse.ArgumentParser()
     parser.add_argument("--k", type=int, default=7)
@@ -43,12 +44,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    global HOLDOUT_PATH
-    if args.file:
-        HOLDOUT_PATH = HOLDOUT_PATH.parent / args.file
-    if not HOLDOUT_PATH.exists():
+    holdout_path = HOLDOUT_PATH.parent / args.file if args.file else HOLDOUT_PATH
+    if not holdout_path.exists():
         print(
-            f"{HOLDOUT_PATH} が無い（scripts/fetch_holdout_queries.py で取得する）",
+            f"{holdout_path} が無い（scripts/fetch_holdout_queries.py で取得する）",
             file=sys.stderr,
         )
         return 1
@@ -59,7 +58,7 @@ def main() -> int:
 
     records = [
         json.loads(line)
-        for line in HOLDOUT_PATH.read_text(encoding="utf-8").splitlines()
+        for line in holdout_path.read_text(encoding="utf-8").splitlines()
     ]
     dropped_obsolete = 0
     cases: list[tuple[str, str, set[str], int]] = []
@@ -70,8 +69,6 @@ def main() -> int:
         if current:
             year = 1970
             if record.get("creation_date"):
-                from datetime import datetime
-
                 year = datetime.fromtimestamp(int(record["creation_date"]), tz=UTC).year
             cases.append((record["title"], record["body"], current, year))
     if args.limit:

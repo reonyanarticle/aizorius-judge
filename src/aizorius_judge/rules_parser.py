@@ -32,7 +32,9 @@ _GLOSSARY_TITLES = ("Glossary", "用語集")
 # や "rules 613.2, 707.2, and 707.3"（列挙）を多用するため、"rule" 直後だけでなく
 # 番号トークン全般を拾う（###.# 形式は定義文中でルール参照以外に現れない。
 # 実在しない番号は data_loader.load_glossary_terms が known_numbers で除外する）。
-_RULE_REF_RE = re.compile(r"(\d{3}\.\d+)([a-z])?(?:\s*[–—-]\s*([a-z]))?")
+# 範囲終端は「単独の英字1文字」に限る（(?![a-z])）——"rule 702.19b - keyword ability" の
+# ような地の文のハイフンを b〜k のレンジと誤解して実在番号を汚染しないため
+_RULE_REF_RE = re.compile(r"(\d{3}\.\d+)([a-z])?(?:\s*[–—-]\s*([a-z])(?![a-z]))?")
 # 個別ルール（"510.2"）は除外しつつ、文末ピリオド（"rules 510."）は受け付ける
 _SECTION_REF_RE = re.compile(r"rules? (\d{3})(?!\.\d|\d)")
 _JA_GLOSS_H5_RE = re.compile(r"<h5><a id=\"g_[^\"]*\">(.*?)</a></h5>", re.DOTALL)

@@ -170,3 +170,14 @@ async def test_invalid_json_raises_scryfall_error() -> None:
 
     with pytest.raises(ScryfallError):
         await make_client(handler).lookup_card("稲妻")
+
+
+def test_card_name_pair_requires_both_names() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from aizorius_judge.models import CardNamePair
+
+    assert CardNamePair(ja="血染めの月", en="Blood Moon").en == "Blood Moon"
+    with pytest.raises(ValidationError):
+        CardNamePair(ja="", en="Blood Moon")

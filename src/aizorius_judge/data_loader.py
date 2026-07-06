@@ -64,8 +64,10 @@ def _stem_en(token: str) -> str:
         return token
     if token.endswith("ies") and len(token) > 4:
         return token[:-3] + "y"
-    if token.endswith(("ses", "xes", "zes", "ches", "shes")) and len(token) > 4:
-        return token[:-2]  # passes/boxes/matches 型の -es 複数形のみ
+    if token.endswith(("sses", "xes", "zes", "ches", "shes")) and len(token) > 4:
+        # passes/boxes/matches 型の -es 複数形のみ。"ses" まで含めると phases/cases
+        # （サイレントe＋s）が phas/cas に化けて単数形と不一致になる（レビュー指摘）
+        return token[:-2]
     if token.endswith("s") and not token.endswith("ss") and len(token) > 3:
         return token[:-1]
     if token.endswith("ing") and len(token) > 5:
@@ -275,12 +277,18 @@ def _get_existing_collection(client: ClientAPI) -> chromadb.Collection | None:
 
     「無い」以外の例外（DB破損・権限等）は握りつぶさず伝播させる——黙って再構築に
     倒すと障害が見えなくなるため。NotFoundError の型は chromadb のバージョンで揺れる
-    ので、例外名で判定する。
+    ので、まず例外の型名で判定し、メッセージの部分一致は「型名に notfound を含まない
+    旧バージョンの ValueError 系」に限った最後の砦とする（契約はテストで固定）。
     """
     try:
         return client.get_collection(COLLECTION_NAME)
     except Exception as error:
-        if "notfound" in type(error).__name__.lower() or "does not exist" in str(error):
+        type_name = type(error).__name__.lower()
+        if "notfound" in type_name:
+            return None
+        if type_name in ("valueerror", "invalidcollectionexception") and (
+            "does not exist" in str(error)
+        ):
             return None
         raise
 

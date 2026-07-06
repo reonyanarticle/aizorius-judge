@@ -195,3 +195,9 @@ def test_merge_glossaries_en_is_authoritative_ja_supplements() -> None:
     assert alpha.term_ja == "アルファ用語"
     assert set(alpha.rules) == {"509.1b", "509.1c", "200.1"}  # 日英の参照が合流する
     assert "Gamma Term" in by_en  # 日本語側にしかない用語も残る
+
+
+def test_referenced_rules_prose_hyphen_is_not_a_range() -> None:
+    # 地の文のハイフン（"702.19b - keyword ability"）をレンジ展開しない（実在番号の汚染防止）
+    rules, _ = _referenced_rules("See rule 702.19b - keyword ability details.")
+    assert rules == ["702.19b"]
