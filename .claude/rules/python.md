@@ -8,7 +8,8 @@ AIzorius Judge の Python 実装の細則。**人間と Claude の両方**が従
 - **整形＝Black／lint＝Ruff**（決定）。Ruff は lint 専用（import順の整列＝isort相当を含む）、整形は Black。isort を別途導入しない。
 - **型チェッカ＝basedpyright（pyright系）**（決定）。mypy・`ty`（プレビュー）は不採用。
 - **型定義は `models.py` に集約**（決定）。Pydantic モデル・`dataclass`・`Enum`・`TypedDict` 等は原則 `src/aizorius_judge/models.py` に置く。規模が増えたら層ごとの `models.py` に分割可。
-- **グローバル状態・設定は `settings.py` に集約**（決定）。`pydantic-settings` の `BaseSettings` 1クラスに env／`.env`／デフォルト（`EMBEDDING_MODEL` / `EMBEDDING_DEVICE` / `DATA_DIR`）を型付きで統合。モジュール横断のグローバル変数を各所に散らさない。ランタイム依存（HybridSearcher・httpxクライアント・ChromaDBコレクション等）は settings ではなく**注入**で渡す。
+- **グローバル状態・設定は `settings.py` に集約**（決定）。`pydantic-settings` の `BaseSettings` 1クラスに env／`.env`／デフォルト（`EMBEDDING_MODEL` / `EMBEDDING_DEVICE` / `DATA_DIR` / `RERANKER_*`）を型付きで統合。モジュール横断のグローバル変数を各所に散らさない。ランタイム依存（HybridSearcher・httpxクライアント・ChromaDBコレクション等）は settings ではなく**注入**で渡す。
+  - **settings とモジュール定数の線引き**：環境・マシンによって変えたくなる値（デバイス・モデル名・メモリ依存の max_length/batch 等）は settings（env上書き可）。**計測で確定したアルゴリズム定数**（`CANDIDATE_POOL`・RRFの重み等。環境で変えると計測済み品質が無効になる）と固定識別子（コレクション名・User-Agent）は PEP8 のモジュール定数のまま置き、実測の根拠をコメントで残す。**可変のグローバル変数（`global` 文）は禁止**。
 - **パッケージ構成＝`src/aizorius_judge/`（src layout）**（決定）。`src/servers/` のような「src直下の汎用サブディレクトリ」構成は採らない。理由：
   - PyPA の定義する「src layout」は `src/<パッケージ名>/`（プロジェクト名のパッケージを src 内に置く）であり、src直下に裸のモジュール/汎用ディレクトリを置く形ではない。uv も CLI を持つアプリには `uv init --package`（= `src/<pkg>/` ＋ `[project.scripts]`）を推奨。
   - **MCP公式リファレンスサーバー**（例：mcp-server-git）も `src/mcp_server_git/` ＋ `[project.scripts]` で、`uvx mcp-server-git` / `python -m mcp_server_git` で起動する。Claude Desktop への配布・登録がこの形を前提とする。

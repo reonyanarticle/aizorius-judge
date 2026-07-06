@@ -72,4 +72,4 @@
 - **開発機**：MacBook Pro M4 / 32GB / macOS 15.x（MPS加速が使える）
 - **Python**：3.12（uv 管理 → [.claude/rules/python.md](../.claude/rules/python.md)）
 - **APIキー**：不要（Scryfall は認証不要、Embedding はローカル）。外部評価を使う場合のみ `GPT4_API_KEY`
-- **環境変数**（すべて任意、デフォルトで動く）：`EMBEDDING_MODEL` / `EMBEDDING_DEVICE`（mps|cpu）/ `DATA_DIR`
+- **環境変数**（すべて任意、デフォルトで動く）：`EMBEDDING_MODEL` / `EMBEDDING_DEVICE`（mps|cpu）/ `DATA_DIR` / `RERANKER_MODEL`（空で高速構成）/ `RERANKER_MAX_LENGTH`・`RERANKER_BATCH_SIZE`（メモリ依存。既定 1024/8）

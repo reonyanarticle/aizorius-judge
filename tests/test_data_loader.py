@@ -176,3 +176,13 @@ def test_get_existing_collection_contract() -> None:
         _get_existing_collection(_RaisingClient(RuntimeError("db corrupted")))  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="unrelated"):
         _get_existing_collection(_RaisingClient(ValueError("unrelated failure")))  # type: ignore[arg-type]
+
+
+def test_reranker_knobs_come_from_settings() -> None:
+    # マシン依存のノブ（max_length/batch）が settings で上書き可能なことを固定する
+    from aizorius_judge.settings import Settings
+
+    settings = Settings(reranker_max_length=512, reranker_batch_size=4)
+    assert settings.reranker_max_length == 512
+    assert settings.reranker_batch_size == 4
+    assert Settings().reranker_max_length == 1024  # 既定は実測値

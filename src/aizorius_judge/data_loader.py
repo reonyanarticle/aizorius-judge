@@ -161,21 +161,27 @@ class EmbeddingModel:
 class Reranker:
     """多言語 Cross-Encoder の薄いラッパ（bge-reranker-v2-m3）。
 
-    max_length=1024 / batch_size=8: 512では長いルールの日本語側が切られたまま
-    採点されていた。1024×batch8 は M4/MPS で OOM なし・golden k7 で
-    0.905→0.909（must_cite）・MRR 0.785→0.792・p50 悪化なしを実測して採用（2026-07-06）。
+    max_length / batch_size はマシン依存の設定（settings.py から注入 →
+    `RERANKER_MAX_LENGTH` / `RERANKER_BATCH_SIZE`）。既定の 1024/8 は M4/MPS の実測:
+    512では長いルールの日本語側が切られたまま採点されており、1024×batch8 で
+    OOMなし・golden k7 0.905→0.909（must_cite）・MRR 0.785→0.792・p50 悪化なし（2026-07-06）。
     """
 
-    def __init__(self, model_name: str, device: str) -> None:
+    def __init__(
+        self, model_name: str, device: str, max_length: int = 1024, batch_size: int = 8
+    ) -> None:
         from sentence_transformers import CrossEncoder
 
         self.model_name = model_name
-        self._model = CrossEncoder(model_name, device=device, max_length=1024)
+        self._batch_size = batch_size
+        self._model = CrossEncoder(model_name, device=device, max_length=max_length)
 
     def rank(self, query: str, passages: list[str]) -> list[int]:
         """passages をクエリ関連度の降順に並べたインデックス列を返す。"""
         scores = self._model.predict(
-            [[query, p] for p in passages], batch_size=8, show_progress_bar=False
+            [[query, p] for p in passages],
+            batch_size=self._batch_size,
+            show_progress_bar=False,
         )
         return list(np.argsort(-np.asarray(scores)))
 
@@ -369,7 +375,12 @@ def build_or_load_index(settings: Settings) -> SearchIndex:
         )
 
     reranker = (
-        Reranker(settings.reranker_model, embedder.device)
+        Reranker(
+            settings.reranker_model,
+            embedder.device,
+            max_length=settings.reranker_max_length,
+            batch_size=settings.reranker_batch_size,
+        )
         if settings.reranker_model
         else None
     )
